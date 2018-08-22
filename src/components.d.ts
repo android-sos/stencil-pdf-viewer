@@ -33,25 +33,83 @@ declare global {
 
   namespace StencilComponents {
     interface HivePdfViewer {
-      'allowPrint': boolean;
-      'canAutoResize': boolean;
-      'currentMatchIndex': number;
-      'enableRotate': boolean;
-      'enableSideDrawer': boolean;
-      'externalLinkTarget': string;
-      'fitToPage': boolean;
-      'maxZoom': number;
-      'minZoom': number;
-      'openDrawer': boolean;
-      'originalSize': boolean;
-      'page': number;
-      'renderText': boolean;
-      'rotation': number;
-      'searchOpen': boolean;
-      'src': string | Uint8Array | PDFSource;
-      'stickToPage': boolean;
-      'totalMatchCount': number;
-      'zoom': number;
+      'baseUrl': string;
+      'cMapPacked': boolean;
+      'cMapUrl': string;
+      /**
+       * The cursor tool that is enabled upon load.\n 0 = Text selection tool.\n 1 = Hand tool.
+       */
+      'cursorToolOnLoad': 0 | 1;
+      /**
+       * Default zoom level of the viewer. Accepted values: 'auto', 'page-actual', 'page-width', 'page-height', 'page-fit', or a zoom level in percents.
+       */
+      'defaultZoomValue': string;
+      'disableAutoFetch': boolean;
+      'disableCreateObjectURL': boolean;
+      /**
+       * Whether to disable @font-face and fall back to canvas rendering (this is more resource-intensive).
+       */
+      'disableFontFace': boolean;
+      'disablePageLabels': boolean;
+      'disablePageMode': boolean;
+      /**
+       * Whether to disable range requests (not recommended).
+       */
+      'disableRange': boolean;
+      /**
+       * Whether to disable streaming for requests (not recommended).
+       */
+      'disableStream': boolean;
+      /**
+       * Whether to prevent the extension from reporting the extension and browser version to the extension developers.
+       */
+      'disableTelemetry': boolean;
+      /**
+       * When enabled, pages whose orientation differ from the first page are rotated when printed.
+       */
+      'enablePrintAutoRotate': boolean;
+      /**
+       * Whether to enable WebGL.
+       */
+      'enableWebGL': boolean;
+      'externalLinkRel': 'noopener' | 'noreferrer' | 'nofollow';
+      /**
+       * Controls how external links will be opened.\n 0 = default.\n 1 = replaces current window.\n 2 = new window/tab.\n 3 = parent.\n 4 = in top window.
+       */
+      'externalLinkTarget': 0 | 1 | 2 | 3 | 4;
+      'imageResourcesPath': string;
+      'locale': string;
+      'maxCanvasPixels': number;
+      /**
+       * Whether to enable debugging tools.
+       */
+      'pdfBugEnabled': boolean;
+      'renderInteractiveForms': boolean;
+      'renderer': 'canvas' | 'svg';
+      /**
+       * Controls how the viewer scrolls upon load.\n 0 = Vertical scrolling.\n 1 = Horizontal scrolling.\n 2 = Wrapped scrolling.
+       */
+      'scrollModeOnLoad': number;
+      /**
+       * Whether to view PDF documents in the last page and position upon opening the viewer.
+       */
+      'showPreviousViewOnLoad': boolean;
+      /**
+       * Controls the state of the sidebar upon load.\n 0 = do not show sidebar.\n 1 = show thumbnails in sidebar.\n 2 = show document outline in sidebar.\n 3 = Show attachments in sidebar.
+       */
+      'sidebarViewOnLoad': 0 | 1 | 2 | 3;
+      'singlePageMode': boolean;
+      /**
+       * "Whether the viewer should join pages into spreads upon load.\n 0 = No spreads.\n 1 = Odd spreads.\n 2 = Even spreads.
+       */
+      'spreadModeOnLoad': 0 | 1 | 2;
+      'supportsPrinting': boolean;
+      /**
+       * Controls if the text layer is enabled, and the selection mode that is used.\n 0 = Disabled.\n 1 = Enabled.\n 2 = (Experimental) Enabled, with enhanced text selection.
+       */
+      'textLayerMode': 0 | 1 | 2;
+      'url': string | Uint8Array | PDFSource;
+      'useOnlyCssZoom': boolean;
     }
   }
 
@@ -74,30 +132,86 @@ declare global {
   }
   namespace JSXElements {
     export interface HivePdfViewerAttributes extends HTMLAttributes {
-      'allowPrint'?: boolean;
-      'canAutoResize'?: boolean;
-      'currentMatchIndex'?: number;
-      'enableRotate'?: boolean;
-      'enableSideDrawer'?: boolean;
-      'externalLinkTarget'?: string;
-      'fitToPage'?: boolean;
-      'maxZoom'?: number;
-      'minZoom'?: number;
-      'onAfterLoadComplete'?: (event: CustomEvent) => void;
-      'onOnError'?: (event: CustomEvent) => void;
-      'onOnLinkClick'?: (event: CustomEvent) => void;
-      'onOnProgress'?: (event: CustomEvent) => void;
+      'baseUrl'?: string;
+      'cMapPacked'?: boolean;
+      'cMapUrl'?: string;
+      /**
+       * The cursor tool that is enabled upon load.\n 0 = Text selection tool.\n 1 = Hand tool.
+       */
+      'cursorToolOnLoad'?: 0 | 1;
+      /**
+       * Default zoom level of the viewer. Accepted values: 'auto', 'page-actual', 'page-width', 'page-height', 'page-fit', or a zoom level in percents.
+       */
+      'defaultZoomValue'?: string;
+      'disableAutoFetch'?: boolean;
+      'disableCreateObjectURL'?: boolean;
+      /**
+       * Whether to disable @font-face and fall back to canvas rendering (this is more resource-intensive).
+       */
+      'disableFontFace'?: boolean;
+      'disablePageLabels'?: boolean;
+      'disablePageMode'?: boolean;
+      /**
+       * Whether to disable range requests (not recommended).
+       */
+      'disableRange'?: boolean;
+      /**
+       * Whether to disable streaming for requests (not recommended).
+       */
+      'disableStream'?: boolean;
+      /**
+       * Whether to prevent the extension from reporting the extension and browser version to the extension developers.
+       */
+      'disableTelemetry'?: boolean;
+      /**
+       * When enabled, pages whose orientation differ from the first page are rotated when printed.
+       */
+      'enablePrintAutoRotate'?: boolean;
+      /**
+       * Whether to enable WebGL.
+       */
+      'enableWebGL'?: boolean;
+      'externalLinkRel'?: 'noopener' | 'noreferrer' | 'nofollow';
+      /**
+       * Controls how external links will be opened.\n 0 = default.\n 1 = replaces current window.\n 2 = new window/tab.\n 3 = parent.\n 4 = in top window.
+       */
+      'externalLinkTarget'?: 0 | 1 | 2 | 3 | 4;
+      'imageResourcesPath'?: string;
+      'locale'?: string;
+      'maxCanvasPixels'?: number;
+      'onFirstPage'?: (event: CustomEvent) => void;
       'onPageChange'?: (event: CustomEvent) => void;
-      'openDrawer'?: boolean;
-      'originalSize'?: boolean;
-      'page'?: number;
-      'renderText'?: boolean;
-      'rotation'?: number;
-      'searchOpen'?: boolean;
-      'src'?: string | Uint8Array | PDFSource;
-      'stickToPage'?: boolean;
-      'totalMatchCount'?: number;
-      'zoom'?: number;
+      'onProgressChange'?: (event: CustomEvent) => void;
+      /**
+       * Whether to enable debugging tools.
+       */
+      'pdfBugEnabled'?: boolean;
+      'renderInteractiveForms'?: boolean;
+      'renderer'?: 'canvas' | 'svg';
+      /**
+       * Controls how the viewer scrolls upon load.\n 0 = Vertical scrolling.\n 1 = Horizontal scrolling.\n 2 = Wrapped scrolling.
+       */
+      'scrollModeOnLoad'?: number;
+      /**
+       * Whether to view PDF documents in the last page and position upon opening the viewer.
+       */
+      'showPreviousViewOnLoad'?: boolean;
+      /**
+       * Controls the state of the sidebar upon load.\n 0 = do not show sidebar.\n 1 = show thumbnails in sidebar.\n 2 = show document outline in sidebar.\n 3 = Show attachments in sidebar.
+       */
+      'sidebarViewOnLoad'?: 0 | 1 | 2 | 3;
+      'singlePageMode'?: boolean;
+      /**
+       * "Whether the viewer should join pages into spreads upon load.\n 0 = No spreads.\n 1 = Odd spreads.\n 2 = Even spreads.
+       */
+      'spreadModeOnLoad'?: 0 | 1 | 2;
+      'supportsPrinting'?: boolean;
+      /**
+       * Controls if the text layer is enabled, and the selection mode that is used.\n 0 = Disabled.\n 1 = Enabled.\n 2 = (Experimental) Enabled, with enhanced text selection.
+       */
+      'textLayerMode'?: 0 | 1 | 2;
+      'url'?: string | Uint8Array | PDFSource;
+      'useOnlyCssZoom'?: boolean;
     }
   }
 }
