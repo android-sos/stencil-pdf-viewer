@@ -16,27 +16,16 @@ export class HivePDFToolbarComponent {
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                                 <g data-name="Layer 1">
                                     <path d="M3.25 1A2.25 2.25 0 0 0 1 3.25v17.5A2.25 2.25 0 0 0 3.25 23H11V1zM8 19.5a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5zm0-6a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5zm0-6a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-3a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 .5.5z"></path>
-                                    <path class="3b3139a5-06b2-43d8-b27d-af3b8c8645ab" d="M11 2h9.75A1.25 1.25 0 0 1 22 3.25v17.5A1.25 1.25 0 0 1 20.75 22H11"></path>
+                                    <path class="box-line" d="M11 2h9.75A1.25 1.25 0 0 1 22 3.25v17.5A1.25 1.25 0 0 1 20.75 22H11"></path>
                                 </g>
                             </svg>
                         </hive-pdf-toolbar-btn>
-
-                        {/* <button id="sidebarToggle" class="toolbarButton" title="Toggle Sidebar" tabindex="11" data-l10n-id="toggle_sidebar">
-                            <span data-l10n-id="toggle_sidebar_label">Toggle Sidebar</span>
-                        </button> */}
-                        {/* <div class="toolbarButtonSpacer"></div> */}
-
-
-                        {/* <button id="viewFind" class="toolbarButton" title="Find in Document" tabindex="12" data-l10n-id="findbar">
-                            <span data-l10n-id="findbar_label">Find</span>
-                        </button> */}
                         <div class="page-indicators">
                             <button id="previous" class="page-indicator previous" title="Previous Page" data-l10n-id="previous">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                                     <path d="M7.5 12.5l9 9v-18z"></path>
                                 </svg>
                             </button>
-                            {/* <div class="splitToolbarButtonSeparator"></div> */}
                             <input type="number" id="pageNumber" title="Page" value="1" size={4} min="1" data-l10n-id="page" />
                             <button id="next" class="page-indicator next" title="Next Page" data-l10n-id="next">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
@@ -55,11 +44,6 @@ export class HivePDFToolbarComponent {
                             </svg>
                         </hive-pdf-toolbar-btn>
 
-                            {/* <button id="zoomOut" class="toolbarButton zoomOut" title="Zoom Out" tabindex="21" data-l10n-id="zoom_out">
-                                <span data-l10n-id="zoom_out_label">Zoom Out</span>
-                            </button> */}
-                            {/* <div class="splitToolbarButtonSeparator"></div> */}
-
                         <hive-pdf-toolbar-btn id="zoomIn" title="Zoom In" data-l10n-id="zoom_in">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                                 <path opacity=".5" d="M13.5 8H10V4.5H8V8H4.5v2H8v3.5h2V10h3.5V8z"></path>
@@ -68,9 +52,6 @@ export class HivePDFToolbarComponent {
                             </svg>
                         </hive-pdf-toolbar-btn>
 
-                            {/* <button id="zoomIn" class="toolbarButton zoomIn" title="Zoom In" tabindex="22" data-l10n-id="zoom_in">
-                                <span data-l10n-id="zoom_in_label">Zoom In</span>
-                            </button> */}
                         <span id="scaleSelectContainer" class="dropdownToolbarButton">
                             <select id="scaleSelect" title="Zoom" tabindex="23" data-l10n-id="zoom">
                                 <option id="pageAutoOption" title="" value="auto" selected data-l10n-id="page_scale_auto">Automatic Zoom</option>
@@ -107,10 +88,6 @@ export class HivePDFToolbarComponent {
                             </svg>
                         </hive-pdf-toolbar-btn>
 
-                        {/* <button id="print" class="toolbarButton print hiddenMediumView" title="Print" tabindex="33" data-l10n-id="print">
-                            <span data-l10n-id="print_label">Print</span>
-                        </button> */}
-
                         <hive-pdf-toolbar-btn title="Download" id="download" data-l10n-id="download">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                                 <g id="6d7384b7-96b5-449c-8962-cda9c3365571" data-name="Layer 1">
@@ -122,24 +99,15 @@ export class HivePDFToolbarComponent {
                             </svg>
                         </hive-pdf-toolbar-btn>
 
-                        {/* <button id="download" class="toolbarButton download hiddenMediumView" title="Download" tabindex="34" data-l10n-id="download">
-                            <span data-l10n-id="download_label">Download</span>
-                        </button> */}
                         <a href="#" id="viewBookmark" class="toolbarButton bookmark hiddenSmallView" title="Current view (copy or open in new window)" tabindex="35" data-l10n-id="bookmark">
                             <span data-l10n-id="bookmark_label">Current View</span>
                         </a>
-
-                        <div class="verticalToolbarSeparator hiddenSmallView"></div>
 
                         <hive-pdf-toolbar-btn id="secondaryToolbarToggle" title="Tools" data-l10n-id="tools">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                                 <path d="M12.58 3a.61.61 0 0 1 .61.52l.38 2.55a6.09 6.09 0 0 1 1.51.63l2.07-1.53a.61.61 0 0 1 .8.06l.82.82a.61.61 0 0 1 .06.8L17.3 8.92a6.09 6.09 0 0 1 .63 1.51l2.55.38a.61.61 0 0 1 .52.61v1.16a.61.61 0 0 1-.52.61l-2.55.38a6.09 6.09 0 0 1-.63 1.51l1.53 2.07a.61.61 0 0 1-.06.8l-.82.82a.61.61 0 0 1-.8.06l-2.07-1.53a6.09 6.09 0 0 1-1.51.63l-.38 2.55a.61.61 0 0 1-.61.52h-1.16a.61.61 0 0 1-.61-.52l-.38-2.55a6.09 6.09 0 0 1-1.51-.63l-2.07 1.53a.61.61 0 0 1-.8-.06L5.23 18a.61.61 0 0 1-.06-.8l1.53-2.12a6.09 6.09 0 0 1-.63-1.51l-2.55-.38a.61.61 0 0 1-.52-.61v-1.16a.61.61 0 0 1 .52-.61l2.55-.38a6.09 6.09 0 0 1 .63-1.51L5.17 6.85A.61.61 0 0 1 5.23 6L6 5.23a.61.61 0 0 1 .8-.06L8.92 6.7a6.09 6.09 0 0 1 1.51-.63l.38-2.55a.61.61 0 0 1 .61-.52h1.16M12 15.5A3.5 3.5 0 1 0 8.5 12a3.5 3.5 0 0 0 3.5 3.5M12.58 1h-1.16a2.63 2.63 0 0 0-2.59 2.23l-.12.83-.71-.5a2.61 2.61 0 0 0-3.4.25l-.82.82A2.63 2.63 0 0 0 3.56 8l.5.67-.83.12A2.63 2.63 0 0 0 1 11.42v1.16a2.63 2.63 0 0 0 2.23 2.58l.83.12-.5.67a2.63 2.63 0 0 0 .25 3.4l.82.82a2.61 2.61 0 0 0 3.4.25l.67-.5.12.83a2.63 2.63 0 0 0 2.6 2.25h1.16a2.63 2.63 0 0 0 2.58-2.23l.12-.83.67.5a2.61 2.61 0 0 0 3.4-.25l.82-.82a2.63 2.63 0 0 0 .25-3.4l-.5-.67.83-.12a2.63 2.63 0 0 0 2.25-2.6v-1.16a2.63 2.63 0 0 0-2.23-2.58l-.83-.12.5-.67a2.63 2.63 0 0 0-.25-3.4l-.82-.82A2.61 2.61 0 0 0 16 3.56l-.67.5-.12-.83A2.63 2.63 0 0 0 12.58 1zM12 13.5a1.5 1.5 0 1 1 1.5-1.5 1.5 1.5 0 0 1-1.5 1.5z"></path>
                             </svg>
                         </hive-pdf-toolbar-btn>
-
-                        {/* <button id="secondaryToolbarToggle" class="toolbarButton" title="Tools" tabindex="36" data-l10n-id="tools">
-                            <span data-l10n-id="tools_label">Tools</span>
-                        </button> */}
 
                         <hive-pdf-toolbar-btn id="viewFind" title="Find in Document" data-l10n-id="findbar">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">

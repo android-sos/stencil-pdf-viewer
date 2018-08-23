@@ -99,7 +99,7 @@ declare global {
 
   namespace StencilComponents {
     interface HivePdfFindbar {
-
+      'searchPlaceholder': string;
     }
   }
 
@@ -122,7 +122,7 @@ declare global {
   }
   namespace JSXElements {
     export interface HivePdfFindbarAttributes extends HTMLAttributes {
-
+      'searchPlaceholder'?: string;
     }
   }
 }
@@ -369,7 +369,6 @@ declare global {
        * "Whether the viewer should join pages into spreads upon load.\n 0 = No spreads.\n 1 = Odd spreads.\n 2 = Even spreads.
        */
       'spreadModeOnLoad': 0 | 1 | 2;
-      'supportsPrinting': boolean;
       /**
        * Controls if the text layer is enabled, and the selection mode that is used.\n 0 = Disabled.\n 1 = Enabled.\n 2 = (Experimental) Enabled, with enhanced text selection.
        */
@@ -473,7 +472,6 @@ declare global {
        * "Whether the viewer should join pages into spreads upon load.\n 0 = No spreads.\n 1 = Odd spreads.\n 2 = Even spreads.
        */
       'spreadModeOnLoad'?: 0 | 1 | 2;
-      'supportsPrinting'?: boolean;
       /**
        * Controls if the text layer is enabled, and the selection mode that is used.\n 0 = Disabled.\n 1 = Enabled.\n 2 = (Experimental) Enabled, with enhanced text selection.
        */

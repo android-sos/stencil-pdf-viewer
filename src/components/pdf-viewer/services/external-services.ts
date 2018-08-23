@@ -3,13 +3,13 @@ import { TranslationService } from './translation';
 
 export class HivePDFExternalServices {
 
-    supportsIntegratedFind: false;
-    supportsDocumentFonts: true;
-    supportsDocumentColors: true;
-    supportedMouseWheelZoomModifierKeys: {
+    supportsIntegratedFind = false;
+    supportsDocumentFonts = true;
+    supportsDocumentColors = true;
+    supportedMouseWheelZoomModifierKeys = {
         ctrlKey: true,
-        metaKey: true,
-    }
+        metaKey: true
+    };
 
     updateFindControlState(data) {
         console.log('updateFindControlState', data);

@@ -2,7 +2,6 @@
 }
 
 button {
-    -ms-touch-action: none;
     touch-action: none;
     color: #fff;
     cursor: pointer;
@@ -14,7 +13,6 @@ button {
     border: 1px solid transparent;
     background-color: transparent;
     outline: none;
-    -webkit-transition: background-color .15s;
     transition: background-color .15s;
     border-left: 1px solid #48535b;
     &:last-child {
@@ -36,5 +34,8 @@ button {
         svg {
             fill: #83888d;
         }
+    }
+    &:hover, &:active {
+        background-color: #616D77;
     }
 }
