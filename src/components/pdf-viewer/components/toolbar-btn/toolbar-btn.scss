@@ -1,0 +1,40 @@
+:host {
+}
+
+button {
+    -ms-touch-action: none;
+    touch-action: none;
+    color: #fff;
+    cursor: pointer;
+    height: 48px;
+    width: auto;
+    min-width: 48px;
+    padding: 0 11px;
+    margin: 0;
+    border: 1px solid transparent;
+    background-color: transparent;
+    outline: none;
+    -webkit-transition: background-color .15s;
+    transition: background-color .15s;
+    border-left: 1px solid #48535b;
+    &:last-child {
+        border-right: 1px solid #48535b;
+    }
+
+    .side-drawer-btn {
+        .right-path {
+            fill: none;
+            stroke: currentColor;
+            stroke-miterlimit: 10;
+            stroke-width: 2px;
+            opacity: .5
+        }
+    }
+
+    &:disabled {
+        cursor: not-allowed;
+        svg {
+            fill: #83888d;
+        }
+    }
+}

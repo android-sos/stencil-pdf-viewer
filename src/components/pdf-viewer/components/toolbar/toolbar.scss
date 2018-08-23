@@ -1,0 +1,81 @@
+:host {
+    --pdf-toolbar-height: 48px;
+    --pdf-toolbar-background: #3d464d;
+}
+
+#toolbarContainer, #toolbarViewer {
+    height: var(--pdf-toolbar-height);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    width: 100%;
+    background: var(--pdf-toolbar-background);
+    box-shadow: 0 2px 5px rgba(black, .1);
+    color: white;
+    #toolbarViewerLeft, #toolbarViewerMiddle, #toolbarViewerRight {
+        display: flex;
+        align-items: center;
+        svg {
+            fill: #fff;
+        }
+    }
+}
+
+#sidebarToggle {
+    g {
+        fill: none;
+        stroke: currentColor;
+        stroke-miterlimit: 10;
+        stroke-width: 2px;
+        opacity: .5;
+    }
+}
+
+.page {
+    &-indicators {
+        display: flex;
+        height: 28px;
+        margin: 0 4px;
+    }
+    &-indicator {
+        width: 26px;
+        height: 100%;
+        background: rgba(0, 0, 0, .2);
+        color: #fff;
+        border: 0;
+        outline: none;
+        cursor: pointer;
+        -webkit-transition: all .15s;
+        transition: all .15s;
+        display: flex;
+        justify-content: center;
+        padding: 7px 3px;
+        touch-action: none;
+        &:disabled {
+            pointer-events: none;
+        }
+        &.previous {
+            border-radius: 4px 0 0 4px;
+        }
+        &.next {
+            border-radius: 0 4px 4px 0;
+        }
+    }
+}
+
+#pageNumber {
+    width: 48px;
+    text-align: center;
+    font-size: 13px;
+    padding: 4px;
+    font-weight: 400;
+    background: rgba(0, 0, 0, .2);
+    border: none;
+    outline: none;
+    color: #83888d;
+    line-height: 13px;
+    transition: all .15s;
+    margin: 0 1px;
+    -moz-appearance: textfield;
+}

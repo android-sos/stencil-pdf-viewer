@@ -3,9 +3,8 @@ import { PDFJSStatic, PDFViewerParams, PDFSource } from 'pdfjs-dist';
 import PDFJS from 'pdfjs-dist/build/pdf';
 import PDFJSViewer from 'pdfjs-dist/web/pdf_viewer';
 
-import { getFilenameFromUrl, version, build } from 'pdfjs-dist/lib/pdf';
-import { RendererType, getPDFFileNameFromURL } from 'pdfjs-dist/lib/web/ui_utils';
-import { DefaultExternalServices } from 'pdfjs-dist/lib/web/app';
+import { getFilenameFromUrl, version, build, UNSUPPORTED_FEATURES } from 'pdfjs-dist/lib/pdf';
+import { RendererType, getPDFFileNameFromURL, MAX_SCALE, MIN_SCALE, PresentationModeState, DEFAULT_SCALE_VALUE, isValidRotation } from 'pdfjs-dist/lib/web/ui_utils';
 import { LinkTarget } from 'pdfjs-dist/lib/display/dom_utils';
 
 import PDFJSThumbnailViewer from 'pdfjs-dist/lib/web/pdf_thumbnail_viewer';
@@ -26,11 +25,15 @@ import PDFJSPDFPresentationMode from 'pdfjs-dist/lib/web/pdf_presentation_mode';
 import PDFJSPasswordPrompt from 'pdfjs-dist/lib/web/password_prompt';
 import PDFJSSidebar from 'pdfjs-dist/lib/web/pdf_sidebar';
 import PDFJSSidebarResizer from 'pdfjs-dist/lib/web/pdf_sidebar_resizer';
-import PDFJSDownloadManager from 'pdfjs-dist/lib/web/download_manager';
+import PDFJSViewHistory from 'pdfjs-dist/lib/web/view_history';
+import { HivePDFExternalServices } from './services/external-services';
 
 declare global {
     const PDFJS: PDFJSStatic;
 }
+
+const DEFAULT_SCALE_DELTA = 1.1;
+const FORCE_PAGES_LOADED_TIMEOUT = 10000; // ms
 
 @Component({
     tag: 'hive-pdf-viewer',
@@ -41,6 +44,8 @@ declare global {
 export class PdfViewerComponent {
 
     @Element() private element: HTMLElement;
+
+    @Prop({mutable: true}) page = 1;
 
     @Prop() singlePageMode = false;
     @Prop({ context: 'publicPath' }) private publicPath: string;
@@ -66,7 +71,7 @@ export class PdfViewerComponent {
      */
     @Prop() externalLinkTarget: 0 | 1 | 2 | 3 | 4 = 0;
     @Prop() externalLinkRel: 'noopener' | 'noreferrer' | 'nofollow' = 'nofollow';
-    @Prop() locale = 'en';
+    @Prop() locale = 'en-US';
     @Prop({mutable: true}) baseUrl = '';
     /**
      * Whether to disable streaming for requests (not recommended).
@@ -125,9 +130,17 @@ export class PdfViewerComponent {
 
     @Prop() maxCanvasPixels = 16777216;
 
+    @Prop() disableHistory = true;
+
 
     @Watch('url') urlChanged() {
         // this.open();
+    }
+
+    @Watch('page') pageChanged() {
+        this.webViewerPageChanging({
+            pageNumber: this.page
+        });
     }
 
     @Event() pageChange: EventEmitter;
@@ -157,54 +170,13 @@ export class PdfViewerComponent {
     pdfCursorTools: any;
     pdfPresentationMode: any;
 
-    externalServices =  Object.assign({}, DefaultExternalServices, {
-        createPreferences: function() {
-            return {
-                getAll: () => {
-                    return new Promise(resolve => {
-                        resolve(this);
-                    });
-                }
-            };
-        },
-        createDownloadManager: function(options) {
-            return new PDFJSDownloadManager.DownloadManager(options);
-        },
-        createL10n: function(ref) {
-            const locale = ref.locale || 'en-US';
-            const rtlLanguages = ['az', 'zh-CN', 'zh-HK', 'zh-TW'];
-            return {
-                getDirection: () => {
-                    return new Promise(resolve => {
-                        resolve(rtlLanguages.indexOf(locale) !== -1 ? 'rtl' : 'ltr');
-                    });
-                },
-                getLanguage: () => {
-                    return new Promise(resolve => {
-                        resolve(locale);
-                    });
-                },
-                translate: (container: HTMLElement) => {
-                    return new Promise(resolve => {
-                        resolve(container);
-                    });
-                },
-                get: (i18nKey: string, options, replacement) => {
-                    // this.l10n.get('of_pages', { pagesCount: pagesCount }, 'of {{pagesCount}}').then(function (msg) {
-                    //     items.numPages.textContent = msg;
-                    // });
-                    console.log(`i18n get: ${i18nKey}`, options);
-                    return new Promise(resolve => {
-                        resolve(`${i18nKey} ${replacement}`); // TODO fix this
-                    })
-                }
+    externalServices = new HivePDFExternalServices();
 
-            };
-        }
-    });
     printService: any;
 
     pagesCount = 0;
+
+    initialRotation = 0;
 
     toolbar: any;
     secondaryToolbar;
@@ -213,13 +185,16 @@ export class PdfViewerComponent {
     l10n: any;
     downloadManager: any;
 
+    initialBookmark = document.location.hash.substring(1);
     documentInfo: any;
     metadata: any;
     contentDispositionFilename: any;
     downloadComplete = false;
     initialized = false;
+    isInitialViewSet = false;
     isViewerEmbedded = (window.parent !== window);
     fellback = false;
+    store: any;
 
     preferences: any;
     appConfig: any;
@@ -228,308 +203,19 @@ export class PdfViewerComponent {
         return (
             <div>
                 <div id="outerContainer">
-                    <div id="sidebarContainer">
-                        <div id="toolbarSidebar">
-                            <div class="splitToolbarButton toggled">
-                                <button id="viewThumbnail" class="toolbarButton toggled" title="Show Thumbnails" tabindex="2" data-l10n-id="thumbs">
-                                    <span data-l10n-id="thumbs_label">Thumbnails</span>
-                                </button>
-                                <button id="viewOutline" class="toolbarButton" title="Show Document Outline (double-click to expand/collapse all items)" tabindex="3" data-l10n-id="document_outline">
-                                    <span data-l10n-id="document_outline_label">Document Outline</span>
-                                </button>
-                                <button id="viewAttachments" class="toolbarButton" title="Show Attachments" tabindex="4" data-l10n-id="attachments">
-                                    <span data-l10n-id="attachments_label">Attachments</span>
-                                </button>
-                            </div>
-                        </div>
-                        <div id="sidebarContent">
-                            <div id="thumbnailView">
-                            </div>
-                            <div id="outlineView" class="hidden">
-                            </div>
-                            <div id="attachmentsView" class="hidden">
-                            </div>
-                        </div>
-                        <div id="sidebarResizer" class="hidden"></div>
-                    </div>
+                    <hive-pdf-sidebar />
                     <div id="mainContainer">
-                        <div class="findbar hidden doorHanger" id="findbar">
-                            <div id="findbarInputContainer">
-                                <input id="findInput" class="toolbarField" title="Find" placeholder="Find in document…" tabindex="91" data-l10n-id="find_input" />
-                                <div class="splitToolbarButton">
-                                <button id="findPrevious" class="toolbarButton findPrevious" title="Find the previous occurrence of the phrase" tabindex="92" data-l10n-id="find_previous">
-                                    <span data-l10n-id="find_previous_label">Previous</span>
-                                </button>
-                                <div class="splitToolbarButtonSeparator"></div>
-                                <button id="findNext" class="toolbarButton findNext" title="Find the next occurrence of the phrase" tabindex="93" data-l10n-id="find_next">
-                                    <span data-l10n-id="find_next_label">Next</span>
-                                </button>
-                                </div>
-                            </div>
-
-                            <div id="findbarOptionsContainer">
-                                <input type="checkbox" id="findHighlightAll" class="toolbarField" tabindex="94" />
-                                <label class="toolbarLabel" data-l10n-id="find_highlight">Highlight all</label>
-                                <input type="checkbox" id="findMatchCase" class="toolbarField" tabindex="95" />
-                                <label class="toolbarLabel" data-l10n-id="find_match_case_label">Match case</label>
-                                <span id="findResultsCount" class="toolbarLabel hidden"></span>
-                            </div>
-
-                            <div id="findbarMessageContainer">
-                                <span id="findMsg" class="toolbarLabel"></span>
-                            </div>
-                        </div>
-                        <div id="secondaryToolbar" class="secondaryToolbar hidden doorHangerRight">
-                            <div id="secondaryToolbarButtonContainer">
-                                <button id="secondaryPresentationMode" class="secondaryToolbarButton presentationMode visibleLargeView" title="Switch to Presentation Mode" tabindex="51" data-l10n-id="presentation_mode">
-                                    <span data-l10n-id="presentation_mode_label">Presentation Mode</span>
-                                </button>
-
-                                <button id="secondaryOpenFile" class="secondaryToolbarButton openFile visibleLargeView" title="Open File" tabindex="52" data-l10n-id="open_file">
-                                    <span data-l10n-id="open_file_label">Open</span>
-                                </button>
-
-                                <button id="secondaryPrint" class="secondaryToolbarButton print visibleMediumView" title="Print" tabindex="53" data-l10n-id="print">
-                                    <span data-l10n-id="print_label">Print</span>
-                                </button>
-
-                                <button id="secondaryDownload" class="secondaryToolbarButton download visibleMediumView" title="Download" tabindex="54" data-l10n-id="download">
-                                    <span data-l10n-id="download_label">Download</span>
-                                </button>
-
-                                <a href="#" id="secondaryViewBookmark" class="secondaryToolbarButton bookmark visibleSmallView" title="Current view (copy or open in new window)" tabindex="55" data-l10n-id="bookmark">
-                                    <span data-l10n-id="bookmark_label">Current View</span>
-                                </a>
-
-                                <div class="horizontalToolbarSeparator visibleLargeView"></div>
-
-                                <button id="firstPage" class="secondaryToolbarButton firstPage" title="Go to First Page" tabindex="56" data-l10n-id="first_page">
-                                    <span data-l10n-id="first_page_label">Go to First Page</span>
-                                </button>
-                                <button id="lastPage" class="secondaryToolbarButton lastPage" title="Go to Last Page" tabindex="57" data-l10n-id="last_page">
-                                    <span data-l10n-id="last_page_label">Go to Last Page</span>
-                                </button>
-
-                                <div class="horizontalToolbarSeparator"></div>
-
-                                <button id="pageRotateCw" class="secondaryToolbarButton rotateCw" title="Rotate Clockwise" tabindex="58" data-l10n-id="page_rotate_cw">
-                                    <span data-l10n-id="page_rotate_cw_label">Rotate Clockwise</span>
-                                </button>
-                                <button id="pageRotateCcw" class="secondaryToolbarButton rotateCcw" title="Rotate Counterclockwise" tabindex="59" data-l10n-id="page_rotate_ccw">
-                                    <span data-l10n-id="page_rotate_ccw_label">Rotate Counterclockwise</span>
-                                </button>
-
-                                <div class="horizontalToolbarSeparator"></div>
-
-                                <button id="cursorSelectTool" class="secondaryToolbarButton selectTool toggled" title="Enable Text Selection Tool" tabindex="60" data-l10n-id="cursor_text_select_tool">
-                                    <span data-l10n-id="cursor_text_select_tool_label">Text Selection Tool</span>
-                                </button>
-                                <button id="cursorHandTool" class="secondaryToolbarButton handTool" title="Enable Hand Tool" tabindex="61" data-l10n-id="cursor_hand_tool">
-                                    <span data-l10n-id="cursor_hand_tool_label">Hand Tool</span>
-                                </button>
-
-                                <div class="horizontalToolbarSeparator"></div>
-
-                                <button id="scrollVertical" class="secondaryToolbarButton scrollVertical toggled" title="Use Vertical Scrolling" tabindex="62" data-l10n-id="scroll_vertical">
-                                    <span data-l10n-id="scroll_vertical_label">Vertical Scrolling</span>
-                                </button>
-                                <button id="scrollHorizontal" class="secondaryToolbarButton scrollHorizontal" title="Use Horizontal Scrolling" tabindex="63" data-l10n-id="scroll_horizontal">
-                                    <span data-l10n-id="scroll_horizontal_label">Horizontal Scrolling</span>
-                                </button>
-                                <button id="scrollWrapped" class="secondaryToolbarButton scrollWrapped" title="Use Wrapped Scrolling" tabindex="64" data-l10n-id="scroll_wrapped">
-                                    <span data-l10n-id="scroll_wrapped_label">Wrapped Scrolling</span>
-                                </button>
-
-                                <div class="horizontalToolbarSeparator"></div>
-
-                                <button id="spreadNone" class="secondaryToolbarButton spreadNone toggled" title="Do not join page spreads" tabindex="65" data-l10n-id="spread_none">
-                                    <span data-l10n-id="spread_none_label">No Spreads</span>
-                                </button>
-                                <button id="spreadOdd" class="secondaryToolbarButton spreadOdd" title="Join page spreads starting with odd-numbered pages" tabindex="66" data-l10n-id="spread_odd">
-                                    <span data-l10n-id="spread_odd_label">Odd Spreads</span>
-                                </button>
-                                <button id="spreadEven" class="secondaryToolbarButton spreadEven" title="Join page spreads starting with even-numbered pages" tabindex="67" data-l10n-id="spread_even">
-                                    <span data-l10n-id="spread_even_label">Even Spreads</span>
-                                </button>
-
-                                <div class="horizontalToolbarSeparator"></div>
-
-                                <button id="documentProperties" class="secondaryToolbarButton documentProperties" title="Document Properties…" tabindex="68" data-l10n-id="document_properties">
-                                    <span data-l10n-id="document_properties_label">Document Properties…</span>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="toolbar">
-                            <div id="toolbarContainer">
-                                <div id="toolbarViewer">
-                                    <div id="toolbarViewerLeft">
-                                        <button id="sidebarToggle" class="toolbarButton" title="Toggle Sidebar" tabindex="11" data-l10n-id="toggle_sidebar">
-                                            <span data-l10n-id="toggle_sidebar_label">Toggle Sidebar</span>
-                                        </button>
-                                        <div class="toolbarButtonSpacer"></div>
-                                        <button id="viewFind" class="toolbarButton" title="Find in Document" tabindex="12" data-l10n-id="findbar">
-                                            <span data-l10n-id="findbar_label">Find</span>
-                                        </button>
-                                        <div class="splitToolbarButton hiddenSmallView">
-                                            <button class="toolbarButton pageUp" title="Previous Page" id="previous" tabindex="13" data-l10n-id="previous">
-                                                <span data-l10n-id="previous_label">Previous</span>
-                                            </button>
-                                            <div class="splitToolbarButtonSeparator"></div>
-                                            <button class="toolbarButton pageDown" title="Next Page" id="next" tabindex="14" data-l10n-id="next">
-                                                <span data-l10n-id="next_label">Next</span>
-                                            </button>
-                                        </div>
-                                        <input type="number" id="pageNumber" class="toolbarField pageNumber" title="Page" value="1" size={4} min="1" tabindex="15" data-l10n-id="page" />
-                                        <span id="numPages" class="toolbarLabel"></span>
-                                        </div>
-                                        <div id="toolbarViewerRight">
-                                            <button id="presentationMode" class="toolbarButton presentationMode hiddenLargeView" title="Switch to Presentation Mode" tabindex="31" data-l10n-id="presentation_mode">
-                                                <span data-l10n-id="presentation_mode_label">Presentation Mode</span>
-                                            </button>
-
-                                            <button id="openFile" class="toolbarButton openFile hiddenLargeView" title="Open File" tabindex="32" data-l10n-id="open_file">
-                                                <span data-l10n-id="open_file_label">Open</span>
-                                            </button>
-
-                                            <button id="print" class="toolbarButton print hiddenMediumView" title="Print" tabindex="33" data-l10n-id="print">
-                                                <span data-l10n-id="print_label">Print</span>
-                                            </button>
-
-                                            <button id="download" class="toolbarButton download hiddenMediumView" title="Download" tabindex="34" data-l10n-id="download">
-                                                <span data-l10n-id="download_label">Download</span>
-                                            </button>
-                                            <a href="#" id="viewBookmark" class="toolbarButton bookmark hiddenSmallView" title="Current view (copy or open in new window)" tabindex="35" data-l10n-id="bookmark">
-                                                <span data-l10n-id="bookmark_label">Current View</span>
-                                            </a>
-
-                                            <div class="verticalToolbarSeparator hiddenSmallView"></div>
-
-                                            <button id="secondaryToolbarToggle" class="toolbarButton" title="Tools" tabindex="36" data-l10n-id="tools">
-                                                <span data-l10n-id="tools_label">Tools</span>
-                                            </button>
-                                        </div>
-                                        <div id="toolbarViewerMiddle">
-                                            <div class="splitToolbarButton">
-                                                <button id="zoomOut" class="toolbarButton zoomOut" title="Zoom Out" tabindex="21" data-l10n-id="zoom_out">
-                                                    <span data-l10n-id="zoom_out_label">Zoom Out</span>
-                                                </button>
-                                                <div class="splitToolbarButtonSeparator"></div>
-                                                <button id="zoomIn" class="toolbarButton zoomIn" title="Zoom In" tabindex="22" data-l10n-id="zoom_in">
-                                                    <span data-l10n-id="zoom_in_label">Zoom In</span>
-                                                </button>
-                                            </div>
-                                            <span id="scaleSelectContainer" class="dropdownToolbarButton">
-                                                <select id="scaleSelect" title="Zoom" tabindex="23" data-l10n-id="zoom">
-                                                    <option id="pageAutoOption" title="" value="auto" selected data-l10n-id="page_scale_auto">Automatic Zoom</option>
-                                                    <option id="pageActualOption" title="" value="page-actual" data-l10n-id="page_scale_actual">Actual Size</option>
-                                                    <option id="pageFitOption" title="" value="page-fit" data-l10n-id="page_scale_fit">Page Fit</option>
-                                                    <option id="pageWidthOption" title="" value="page-width" data-l10n-id="page_scale_width">Page Width</option>
-                                                    <option id="customScaleOption" title="" value="custom" disabled hidden></option>
-                                                    <option title="" value="0.5" data-l10n-id="page_scale_percent" data-l10n-args='{ "scale": 50 }'>50%</option>
-                                                    <option title="" value="0.75" data-l10n-id="page_scale_percent" data-l10n-args='{ "scale": 75 }'>75%</option>
-                                                    <option title="" value="1" data-l10n-id="page_scale_percent" data-l10n-args='{ "scale": 100 }'>100%</option>
-                                                    <option title="" value="1.25" data-l10n-id="page_scale_percent" data-l10n-args='{ "scale": 125 }'>125%</option>
-                                                    <option title="" value="1.5" data-l10n-id="page_scale_percent" data-l10n-args='{ "scale": 150 }'>150%</option>
-                                                    <option title="" value="2" data-l10n-id="page_scale_percent" data-l10n-args='{ "scale": 200 }'>200%</option>
-                                                    <option title="" value="3" data-l10n-id="page_scale_percent" data-l10n-args='{ "scale": 300 }'>300%</option>
-                                                    <option title="" value="4" data-l10n-id="page_scale_percent" data-l10n-args='{ "scale": 400 }'>400%</option>
-                                                </select>
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div id="loadingBar">
-                                        <div class="progress">
-                                            <div class="glimmer">
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                        <hive-pdf-findbar />
+                        <hive-pdf-secondary-toolbar />
+                        <hive-pdf-toolbar />
                         <div id="viewerContainer">
                             <div id="viewer" class="pdfViewer"></div>
                         </div>
-                        <div id="errorWrapper" hidden>
-                            <div id="errorMessageLeft">
-                                <span id="errorMessage"></span>
-                                <button id="errorShowMore" data-l10n-id="error_more_info">
-                                More Information
-                                </button>
-                                <button id="errorShowLess" data-l10n-id="error_less_info" hidden>
-                                Less Information
-                                </button>
-                            </div>
-                            <div id="errorMessageRight">
-                                <button id="errorClose" data-l10n-id="error_close">
-                                Close
-                                </button>
-                            </div>
-                            <div class="clearBoth"></div>
-                            <textarea id="errorMoreInfo" hidden readonly="readonly"></textarea>
-                        </div>
+                        <hive-pdf-error-wrapper />
                     </div>
                     <div id="overlayContainer" class="hidden">
-                        <div id="passwordOverlay" class="container hidden">
-                            <div class="dialog">
-                                <div class="row">
-                                    <p id="passwordText" data-l10n-id="password_label">Enter the password to open this PDF file:</p>
-                                </div>
-                                <div class="row">
-                                    <input type="password" id="password" class="toolbarField" />
-                                </div>
-                                <div class="buttonRow">
-                                    <button id="passwordCancel" class="overlayButton"><span data-l10n-id="password_cancel">Cancel</span></button>
-                                    <button id="passwordSubmit" class="overlayButton"><span data-l10n-id="password_ok">OK</span></button>
-                                </div>
-                            </div>
-                        </div>
-                        <div id="documentPropertiesOverlay" class="container hidden">
-                            <div class="dialog">
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_file_name">File name:</span> <p id="fileNameField">-</p>
-                                </div>
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_file_size">File size:</span> <p id="fileSizeField">-</p>
-                                </div>
-                                <div class="separator"></div>
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_title">Title:</span> <p id="titleField">-</p>
-                                </div>
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_author">Author:</span> <p id="authorField">-</p>
-                                </div>
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_subject">Subject:</span> <p id="subjectField">-</p>
-                                </div>
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_keywords">Keywords:</span> <p id="keywordsField">-</p>
-                                </div>
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_creation_date">Creation Date:</span> <p id="creationDateField">-</p>
-                                </div>
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_modification_date">Modification Date:</span> <p id="modificationDateField">-</p>
-                                </div>
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_creator">Creator:</span> <p id="creatorField">-</p>
-                                </div>
-                                <div class="separator"></div>
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_producer">PDF Producer:</span> <p id="producerField">-</p>
-                                </div>
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_version">PDF Version:</span> <p id="versionField">-</p>
-                                </div>
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_page_count">Page Count:</span> <p id="pageCountField">-</p>
-                                </div>
-                                <div class="row">
-                                    <span data-l10n-id="document_properties_page_size">Page Size:</span> <p id="pageSizeField">-</p>
-                                </div>
-                                <div class="buttonRow">
-                                    <button id="documentPropertiesClose" class="overlayButton"><span data-l10n-id="document_properties_close">Close</span></button>
-                                </div>
-                            </div>
-                        </div>
+                        <hive-pdf-password-dialog />
+                        <hive-pdf-document-properties-dialog />
                     </div>
                 </div>
                 <div id="printContainer"></div>
@@ -576,11 +262,7 @@ export class PdfViewerComponent {
     }
 
     webViewerInitialized() {
-        console.log('web viewer initialized');
-
         let file;
-
-        console.log('file url', this.url);
 
         file = this.url;
         if (!file) {
@@ -604,13 +286,16 @@ export class PdfViewerComponent {
         this.appConfig.mainContainer.addEventListener('transitionend', function(evt) {
             if (evt.target ===/** mainContainer **/ this) {
                 // TODO this is not going to work here
-                this.eventBus.dispatch('resize', {
-                    source: this
-                });
+                if (this.eventBus) {
+                    this.eventBus.dispatch('resize', {
+                        source: this
+                    });
+                }
             }
         }, true);
 
         this.appConfig.sidebar.toggleButton.addEventListener('click', () => {
+            console.log('pdfSidebar toggle emitted');
             this.pdfSidebar.toggle();
         });
 
@@ -618,12 +303,11 @@ export class PdfViewerComponent {
             this.webViewerOpenFileViaURL(file);
         }).catch(reason => {
             console.log('An error occured while loading the PDF', reason);
-        })
+        });
 
     }
 
     webViewerOpenFileViaURL(file) {
-        console.debug(`webViewerOpenFileViaURL`, file);
         if (file && file.lastIndexOf('file:', 0) === 0) {
             // file:-scheme. Load the contents in the main thread because QtWebKit
             // cannot load file:-URLs in a Web Worker. file:-URLs are usually loaded
@@ -655,12 +339,12 @@ export class PdfViewerComponent {
 
             let eventBus = appConfig.eventBus || PDFJSGlobalEventBus.getGlobalEventBus();
             this.eventBus = eventBus;
-            console.debug('Initialized eventBus', eventBus);
+            // console.debug('Initialized eventBus', eventBus);
 
             let pdfRenderingQueue = new PDFJSRenderingQueue.PDFRenderingQueue();
             pdfRenderingQueue.OnIdle = this.cleanup.bind(this);
             this.pdfRenderingQueue = pdfRenderingQueue;
-            console.debug('Initialized pdfRenderingQueue', pdfRenderingQueue);
+            // console.debug('Initialized pdfRenderingQueue', pdfRenderingQueue);
 
             let pdfLinkService = new PDFJSPDFLinkService.PDFLinkService({
                 eventBus: this.eventBus,
@@ -668,18 +352,16 @@ export class PdfViewerComponent {
                 externaLinkRel: this.externalLinkRel
             });
             this.pdfLinkService = pdfLinkService;
-            console.debug('Initialized pdfLinkService', pdfLinkService);
+            // console.debug('Initialized pdfLinkService', pdfLinkService);
 
             let downloadManager = this.externalServices.createDownloadManager({
                 disableCreateObjectURL: this.disableCreateObjectURL
             });
             this.downloadManager = downloadManager;
-            console.debug('Initialized downloadManager', downloadManager);
+            // console.debug('Initialized downloadManager', downloadManager);
 
             let container = appConfig.mainContainer;
-            console.debug('container', container);
             let viewer = appConfig.viewerContainer;
-            console.debug('viewer', viewer);
 
             if (this.singlePageMode) {
                 this.pdfViewer = new PDFJSViewer.PDFSinglePageViewer(this.viewerParams);
@@ -704,7 +386,7 @@ export class PdfViewerComponent {
                     maxCanvasPixels: this.maxCanvasPixels,
                 });
             }
-            console.debug('Initialized pdfViewer', this.pdfViewer);
+            // console.debug('Initialized pdfViewer', this.pdfViewer);
 
             pdfRenderingQueue.setViewer(this.pdfViewer);
             pdfLinkService.setViewer(this.pdfViewer);
@@ -716,14 +398,14 @@ export class PdfViewerComponent {
                 linkService: this.pdfLinkService,
                 l10n: this.l10n
             });
-            console.debug('Initialized pdfThumbnailViewer', this.pdfThumbnailViewer);
+            // console.debug('Initialized pdfThumbnailViewer', this.pdfThumbnailViewer);
             pdfRenderingQueue.setThumbnailViewer(this.pdfThumbnailViewer);
 
             this.pdfHistory = new PDFJSHistory.PDFHistory({
                 linkService: pdfLinkService,
                 eventBus
             });
-            console.debug('Initialied pdfHistory', this.pdfHistory);
+            // console.debug('Initialied pdfHistory', this.pdfHistory);
 
             this.findController = new PDFJSFindController.PDFFindController({
                 pdfViewer: this.pdfViewer,
@@ -749,9 +431,10 @@ export class PdfViewerComponent {
             };
 
             this.pdfViewer.setFindController(this.findController);
-            console.debug('Initialized findController', this.findController);
+            // console.debug('Initialized findController', this.findController);
 
             let findBarConfig = Object.create(appConfig.findBar);
+            findBarConfig.toggleButton = appConfig.sidebar.toggleButton;
             findBarConfig.findController = this.findController;
             findBarConfig.eventBus = this.eventBus;
             this.findBar = new PDFJSFindBar.PDFFindBar(findBarConfig, this.l10n);
@@ -763,7 +446,7 @@ export class PdfViewerComponent {
                 this.l10n
             );
 
-            console.debug('Initialized pdfDocumentProperties', this.pdfDocumentProperties);
+            // console.debug('Initialized pdfDocumentProperties', this.pdfDocumentProperties);
 
             this.pdfCursorTools = new PDFJSCursorToosl.PDFCursorTools({
                 container,
@@ -771,13 +454,13 @@ export class PdfViewerComponent {
                 cursorToolOnLoad: this.cursorToolOnLoad
             });
 
-            console.debug('Initialized pdfCursorTools', this.pdfCursorTools);
+            // console.debug('Initialized pdfCursorTools', this.pdfCursorTools);
 
             this.toolbar = new PDFJSToolbar.Toolbar(appConfig.toolbar, container, eventBus, this.l10n);
-            console.debug('Initialized toolbar', this.toolbar);
+            // console.debug('Initialized toolbar', this.toolbar);
 
             this.secondaryToolbar = new PDFJSSecondaryToolbar.SecondaryToolbar(appConfig.secondaryToolbar, container, eventBus);
-            console.debug('Initialized secondaryToolbar', this.secondaryToolbar);
+            // console.debug('Initialized secondaryToolbar', this.secondaryToolbar);
 
             if (this.supportsFullscreen) {
                 this.pdfPresentationMode = new PDFJSPDFPresentationMode.PDFPresentationMode({
@@ -787,26 +470,26 @@ export class PdfViewerComponent {
                     eventBus,
                     contextMenuitems: appConfig.fullscreen
                 });
-                console.debug('Initialized pdfPresentationMode', this.pdfPresentationMode);
+                // console.debug('Initialized pdfPresentationMode', this.pdfPresentationMode);
             }
 
             this.passwordPrompt = new PDFJSPasswordPrompt.PasswordPrompt(appConfig.passwordOverlay,
                 this.overlayManager, this.l10n);
-            console.debug('Initialized passwordPrompt', this.passwordPrompt);
+            // console.debug('Initialized passwordPrompt', this.passwordPrompt);
 
             this.pdfOutlineViewer = new PDFJSOutlineViewer.PDFOutlineViewer({
                 container: appConfig.sidebar.outlineView,
                 linkService: this.pdfLinkService,
                 eventBus: this.eventBus
             });
-            console.debug('Initialized pdfOutlineViewer', this.pdfOutlineViewer);
+            // console.debug('Initialized pdfOutlineViewer', this.pdfOutlineViewer);
 
             this.pdfAttachmentViewer = new PDFJSAttachmentViewer.PDFAttachmentViewer({
                 container: appConfig.sidebar.attachmentsView,
                 eventBus: this.eventBus,
-                downloadManager: null
+                downloadManager: downloadManager
             });
-            console.debug('Initialized pdfAttachmentViewer', this.pdfAttachmentViewer);
+            // console.debug('Initialized pdfAttachmentViewer', this.pdfAttachmentViewer);
 
             let sidebarConfig = Object.create(appConfig.sidebar);
             sidebarConfig.pdfViewer = this.pdfViewer;
@@ -815,11 +498,11 @@ export class PdfViewerComponent {
             sidebarConfig.eventBus = eventBus;
             this.pdfSidebar = new PDFJSSidebar.PDFSidebar(sidebarConfig, this.l10n);
             this.pdfSidebar.onToggled = this.forceRendering.bind(this);
-            console.debug('Initialized pdfSidebar', this.pdfSidebar);
+            // console.debug('Initialized pdfSidebar', this.pdfSidebar);
 
             this.pdfSidebarResizer = new PDFJSSidebarResizer.PDFSidebarResizer(appConfig.sidebarResizer,
                 eventBus, this.l10n);
-            console.debug('Initialized pdfSidebarResizer', this.pdfSidebarResizer);
+            // console.debug('Initialized pdfSidebarResizer', this.pdfSidebarResizer);
             resolve(undefined);
 
         });
@@ -852,6 +535,54 @@ export class PdfViewerComponent {
         this.pdfRenderingQueue.renderHighestPriority();
     }
 
+    setInitialView(storedHash, { rotation = null, sidebarView = null, scrollMode = null, spreadMode = null, } = {}) {
+        let setRotation = (angle) => {
+            if (isValidRotation(angle)) {
+                this.pdfViewer.pagesRotation = angle;
+            }
+        };
+        let setViewerModes = (scroll, spread) => {
+            if (Number.isInteger(scroll)) {
+                this.pdfViewer.scrollMode = scroll;
+            }
+            if (Number.isInteger(spread)) {
+                this.pdfViewer.spreadMode = spread;
+            }
+        };
+
+        // Putting these before isInitialViewSet = true prevents these values from
+        // being stored in the document history (and overriding any future changes
+        // made to the corresponding global preferences), just this once.
+        setViewerModes(scrollMode, spreadMode);
+
+        this.isInitialViewSet = true;
+        this.pdfSidebar.setInitialView(sidebarView);
+
+        if (this.initialBookmark) {
+            setRotation(this.initialRotation);
+            delete this.initialRotation;
+
+            this.pdfLinkService.setHash(this.initialBookmark);
+            this.initialBookmark = null;
+        } else if (storedHash) {
+            setRotation(rotation);
+
+            this.pdfLinkService.setHash(storedHash);
+        }
+
+        // Ensure that the correct page number is displayed in the UI,
+        // even if the active page didn't change during document load.
+        this.toolbar.setPageNumber(this.pdfViewer.currentPageNumber,
+            this.pdfViewer.currentPageLabel);
+        this.secondaryToolbar.setPageNumber(this.pdfViewer.currentPageNumber);
+
+        if (!this.pdfViewer.currentScaleValue) {
+            // Scale was not initialized: invalid bookmark or scale was not specified.
+            // Setting the default one.
+            this.pdfViewer.currentScaleValue = DEFAULT_SCALE_VALUE;
+        }
+    }
+
     cleanup() {
         if (!this.pdfDocument) {
             return; // run cleanup when document is loaded
@@ -867,107 +598,417 @@ export class PdfViewerComponent {
 
     bindEvents() {
         const {
-            eventBus,
-            webViewerFirstPage
+            eventBus
         } = this;
-        this.eventBus.on('resize', () => {
-            console.log('resize');
-        }); // webViewerResize);
-        // this.eventBus.on('hashchange', webViewerHashchange);
+        eventBus.on('resize', () => this.webViewerResize());
+        eventBus.on('hashchange', evt => this.webViewerHashchange(evt));
         // this.eventBus.on('beforeprint', _boundEvents.beforePrint);
         // this.eventBus.on('afterprint', _boundEvents.afterPrint);
-        // this.eventBus.on('pagerendered', webViewerPageRendered);
-        // this.eventBus.on('textlayerrendered', webViewerTextLayerRendered);
-        // this.eventBus.on('updateviewarea', webViewerUpdateViewarea);
-        // this.eventBus.on('pagechanging', webViewerPageChanging);
-        // this.eventBus.on('scalechanging', webViewerScaleChanging);
-        // this.eventBus.on('rotationchanging', webViewerRotationChanging);
-        // this.eventBus.on('sidebarviewchanged', webViewerSidebarViewChanged);
-        // this.eventBus.on('pagemode', webViewerPageMode);
-        // this.eventBus.on('namedaction', webViewerNamedAction);
-        // this.eventBus.on('presentationmodechanged', webViewerPresentationModeChanged);
-        // this.eventBus.on('presentationmode', webViewerPresentationMode);
+        eventBus.on('pagerendered', evt => this.webViewerPageRendered(evt));
+        eventBus.on('textlayerrendered', evt => this.webViewerTextLayerRendered(evt));
+        eventBus.on('updateviewarea', evt => this.webViewerUpdateViewarea(evt));
+        eventBus.on('pagechanging', evt => this.webViewerPageChanging(evt));
+        eventBus.on('scalechanging', evt => this.webViewerScaleChanging(evt));
+        eventBus.on('rotationchanging', evt => this.webViewerRotationChanging(evt));
+        eventBus.on('sidebarviewchanged', evt => this.webViewerSidebarViewChanged(evt));
+        eventBus.on('pagemode', evt => this.webViewerPageMode(evt));
+        eventBus.on('namedaction', evt => this.webViewerNamedAction(evt));
+        eventBus.on('presentationmodechanged', evt => this.webViewerPresentationModeChanged(evt));
+        eventBus.on('presentationmode', () => this.webViewerPresentationMode());
         // this.eventBus.on('openfile', webViewerOpenFile);
         // this.eventBus.on('print', webViewerPrint);
         // this.eventBus.on('download', webViewerDownload);
-        eventBus.on('firstpage', webViewerFirstPage);
-        // eventBus.on('lastpage', webViewerLastPage);
-        // this.eventBus.on('nextpage', (event) => {
-        //     console.log('nextpage', event);
-        // });
-        // this.eventBus.on('previouspage', webViewerPreviousPage);
-        // this.eventBus.on('zoomin', webViewerZoomIn);
-        // this.eventBus.on('zoomout', webViewerZoomOut);
-        // this.eventBus.on('pagenumberchanged', webViewerPageNumberChanged);
-        // this.eventBus.on('scalechanged', webViewerScaleChanged);
-        // this.eventBus.on('rotatecw', webViewerRotateCw);
-        // this.eventBus.on('rotateccw', webViewerRotateCcw);
-        // this.eventBus.on('switchscrollmode', webViewerSwitchScrollMode);
-        // this.eventBus.on('scrollmodechanged', webViewerScrollModeChanged);
-        // this.eventBus.on('switchspreadmode', webViewerSwitchSpreadMode);
-        // this.eventBus.on('spreadmodechanged', webViewerSpreadModeChanged);
-        // this.eventBus.on('documentproperties', webViewerDocumentProperties);
-        // this.eventBus.on('find', webViewerFind);
-        // this.eventBus.on('findfromurlhash', webViewerFindFromUrlHash);
+        eventBus.on('firstpage', () => this.webViewerFirstPage());
+        eventBus.on('lastpage', () => this.webViewerLastPage());
+        eventBus.on('nextpage', () => this.webViewerNextPage());
+        eventBus.on('previouspage', () => this.webViewerPreviousPage());
+        eventBus.on('zoomin', () => this.webViewerZoomIn());
+        eventBus.on('zoomout', () => this.webViewerZoomOut());
+        eventBus.on('pagenumberchanged', evt => this.webViewerPageNumberChanged(evt));
+        eventBus.on('scalechanged', evt => this.webViewerScaleChanged(evt));
+        eventBus.on('rotatecw', () => this.webViewerRotateCw());
+        eventBus.on('rotateccw', () => this.webViewerRotateCcw());
+        eventBus.on('switchscrollmode', evt => this.webViewerSwitchScrollMode(evt));
+        // eventBus.on('scrollmodechanged', evt => this.webViewerScrollModeChanged(evt));
+        eventBus.on('switchspreadmode', evt => this.webViewerSwitchSpreadMode(evt));
+        // eventBus.on('spreadmodechanged', evt => this.webViewerSpreadModeChanged(evt));
+        this.eventBus.on('documentproperties', () => this.webViewerDocumentProperties());
+        this.eventBus.on('find', evt => this.webViewerFind(evt));
+        this.eventBus.on('findfromurlhash', evt => this.webViewerFindFromUrlHash(evt));
         // if (typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) {
             this.eventBus.on('fileinputchange', () => {
                 console.log('webViewerFileInputChange');
             });
         // }
-
-        eventBus.on('documentload', () => {
-            console.log('document loaded');
-        });
     }
 
     unbindEvents() {
         const { eventBus } = this;
-        // eventBus.off('resize', webViewerResize);
-        // eventBus.off('hashchange', webViewerHashchange);
+        eventBus.off('resize', () => this.webViewerResize());
+        eventBus.off('hashchange', evt => this.webViewerHashchange(evt));
         // eventBus.off('beforeprint', _boundEvents.beforePrint);
         // eventBus.off('afterprint', _boundEvents.afterPrint);
-        // eventBus.off('pagerendered', webViewerPageRendered);
-        // eventBus.off('textlayerrendered', webViewerTextLayerRendered);
-        // eventBus.off('updateviewarea', webViewerUpdateViewarea);
-        // eventBus.off('pagechanging', webViewerPageChanging);
-        // eventBus.off('scalechanging', webViewerScaleChanging);
-        // eventBus.off('rotationchanging', webViewerRotationChanging);
-        // eventBus.off('sidebarviewchanged', webViewerSidebarViewChanged);
-        // eventBus.off('pagemode', webViewerPageMode);
-        // eventBus.off('namedaction', webViewerNamedAction);
-        // eventBus.off('presentationmodechanged', webViewerPresentationModeChanged);
-        // eventBus.off('presentationmode', webViewerPresentationMode);
+        eventBus.off('pagerendered', () => this.webViewerPageRendered());
+        eventBus.off('textlayerrendered', evt => this.webViewerTextLayerRendered(evt));
+        eventBus.off('updateviewarea', evt => this.webViewerUpdateViewarea(evt));
+        eventBus.off('pagechanging', evt => this.webViewerPageChanging(evt));
+        eventBus.off('scalechanging', evt => this.webViewerScaleChanging(evt));
+        eventBus.off('rotationchanging', evt => this.webViewerRotationChanging(evt));
+        eventBus.off('sidebarviewchanged', evt => this.webViewerSidebarViewChanged(evt));
+        eventBus.off('pagemode', evt => this.webViewerPageMode(evt));
+        eventBus.off('namedaction', evt => this.webViewerNamedAction(evt));
+        eventBus.off('presentationmodechanged', evt => this.webViewerPresentationModeChanged(evt));
+        eventBus.off('presentationmode', () => this.webViewerPresentationMode());
         // eventBus.off('openfile', webViewerOpenFile);
         // eventBus.off('print', webViewerPrint);
         // eventBus.off('download', webViewerDownload);
-        eventBus.off('firstpage', this.webViewerFirstPage);
-        // eventBus.off('lastpage', webViewerLastPage);
-        // eventBus.off('nextpage', webViewerNextPage);
-        // eventBus.off('previouspage', webViewerPreviousPage);
-        // eventBus.off('zoomin', webViewerZoomIn);
-        // eventBus.off('zoomout', webViewerZoomOut);
-        // eventBus.off('pagenumberchanged', webViewerPageNumberChanged);
-        // eventBus.off('scalechanged', webViewerScaleChanged);
-        // eventBus.off('rotatecw', webViewerRotateCw);
-        // eventBus.off('rotateccw', webViewerRotateCcw);
-        // eventBus.off('switchscrollmode', webViewerSwitchScrollMode);
+        eventBus.off('firstpage', () => this.webViewerFirstPage());
+        eventBus.off('lastpage', () => this.webViewerLastPage());
+        eventBus.off('nextpage', () => this.webViewerNextPage());
+        eventBus.off('previouspage', () => this.webViewerPreviousPage());
+        eventBus.off('zoomin', () => this.webViewerZoomIn());
+        eventBus.off('zoomout', () => this.webViewerZoomOut());
+        eventBus.off('pagenumberchanged', evt => this.webViewerPageNumberChanged(evt));
+        eventBus.off('scalechanged', evt => this.webViewerScaleChanged(evt));
+        eventBus.off('rotatecw', () => this.webViewerRotateCw());
+        eventBus.off('rotateccw', () => this.webViewerRotateCcw());
+        eventBus.off('switchscrollmode', evt => this.webViewerSwitchScrollMode(evt));
         // eventBus.off('scrollmodechanged', webViewerScrollModeChanged);
-        // eventBus.off('switchspreadmode', webViewerSwitchSpreadMode);
+        eventBus.off('switchspreadmode', evt => this.webViewerSwitchSpreadMode(evt));
         // eventBus.off('spreadmodechanged', webViewerSpreadModeChanged);
-        // eventBus.off('documentproperties', webViewerDocumentProperties);
-        // eventBus.off('find', webViewerFind);
-        // eventBus.off('findfromurlhash', webViewerFindFromUrlHash);
+        eventBus.off('documentproperties', () => this.webViewerDocumentProperties());
+        eventBus.off('find', evt => this.webViewerFind(evt));
+        eventBus.off('findfromurlhash', evt => this.webViewerFindFromUrlHash(evt));
         // if (typeof PDFJSDev === 'undefined' || PDFJSDev.test('GENERIC')) {
         //     eventBus.off('fileinputchange', webViewerFileInputChange);
         // }
     }
 
+    webViewerResize() {
+        let { pdfDocument, pdfViewer } = this;
+        if (!pdfDocument) {
+            return;
+        }
+        let currentScaleValue = pdfViewer.currentScaleValue;
+        if (currentScaleValue === 'auto' ||
+            currentScaleValue === 'page-fit' ||
+            currentScaleValue === 'page-width') {
+            // Note: the scale is constant for 'page-actual'.
+            pdfViewer.currentScaleValue = currentScaleValue;
+        }
+        pdfViewer.update();
+    }
+
+    webViewerHashchange(evt) {
+        let hash = evt.hash;
+        if (!hash) {
+            return;
+        }
+        if (!this.isInitialViewSet) {
+            this.initialBookmark = hash;
+        } else if (!this.pdfHistory.popStateInProgress) {
+            this.pdfLinkService.setHash(hash);
+        }
+    }
+
+    webViewerNamedAction(evt) {
+        // Processing couple of named actions that might be useful.
+        // See also PDFLinkService.executeNamedAction
+        let action = evt.action;
+        switch (action) {
+            case 'GoToPage':
+                this.appConfig.toolbar.pageNumber.select();
+                break;
+
+            case 'Find':
+                if (!this.supportsIntegratedFind) {
+                    this.findBar.toggle();
+                }
+                break;
+        }
+    }
+
+    webViewerPresentationModeChanged(evt) {
+        let { active, switchInProgress, } = evt;
+        this.pdfViewer.presentationModeState =
+            switchInProgress ? PresentationModeState.CHANGING :
+                active ? PresentationModeState.FULLSCREEN : PresentationModeState.NORMAL;
+    }
+
+    webViewerPresentationMode() {
+        this.requestPresentationMode();
+    }
+
     webViewerFirstPage() {
-        console.log('********* *(*(*(*(*( in here');
+        if (this.pdfDocument) {
+            this.page = 1;
+        }
     }
 
     webViewerLastPage() {
-        console.log('last page');
+        if (this.pdfDocument) {
+            this.page = this.pagesCount;
+        }
+    }
+
+    webViewerNextPage() {
+        this.page++;
+    }
+
+    webViewerPreviousPage() {
+        this.page--;
+    }
+
+    webViewerSidebarViewChanged(evt) {
+        this.pdfRenderingQueue.isThumbnailViewEnabled =
+            this.pdfSidebar.isThumbnailViewVisible;
+
+        let store = this.store;
+        if (store && this.isInitialViewSet) {
+            // Only update the storage when the document has been loaded *and* rendered.
+            store.set('sidebarView', evt.view).catch(function () { });
+        }
+    }
+
+    webViewerPageMode(evt) {
+        // Handle the 'pagemode' hash parameter, see also `PDFLinkService_setHash`.
+        let mode = evt.mode, view;
+        switch (mode) {
+            case 'thumbs':
+                view = PDFJSSidebar.SidebarView.THUMBS;
+                break;
+            case 'bookmarks':
+            case 'outline':
+                view = PDFJSSidebar.SidebarView.OUTLINE;
+                break;
+            case 'attachments':
+                view = PDFJSSidebar.SidebarView.ATTACHMENTS;
+                break;
+            case 'none':
+                view = PDFJSSidebar.SidebarView.NONE;
+                break;
+            default:
+                console.error('Invalid "pagemode" hash parameter: ' + mode);
+                return;
+        }
+        this.pdfSidebar.switchView(view, /* forceOpen = */ true);
+    }
+
+    webViewerUpdateViewarea(evt) {
+        let location = evt.location, store = this.store;
+
+        if (store && this.isInitialViewSet) {
+            store.setMultiple({
+                'page': location.pageNumber,
+                'zoom': location.scale,
+                'scrollLeft': location.left,
+                'scrollTop': location.top,
+                'rotation': location.rotation,
+            }).catch(function () { /* unable to write to storage */ });
+        }
+        let href =
+            this.pdfLinkService.getAnchorUrl(location.pdfOpenParams);
+        this.appConfig.toolbar.viewBookmark.href = href;
+        this.appConfig.secondaryToolbar.viewBookmarkButton.href =
+            href;
+
+        // Show/hide the loading indicator in the page number input element.
+        let currentPage =
+            this.pdfViewer.getPageView(this.page - 1);
+        let loading = currentPage.renderingState !== PDFJSRenderingQueue.RenderingStates.FINISHED;
+        this.toolbar.updateLoadingIndicatorState(loading);
+    }
+
+    webViewerTextLayerRendered(evt) {
+        if (evt.numTextDivs > 0 && !this.supportsDocumentColors) {
+            console.error('PDF documents are not allowed to use their own colors: Allow pages to choose their own colors is deactivated in the browser');
+            this.fallback();
+        }
+    }
+
+    webViewerScaleChanging(evt) {
+        this.toolbar.setPageScale(evt.presetValue, evt.scale);
+        this.pdfViewer.update();
+    }
+
+    webViewerScaleChanged(evt) {
+        this.pdfViewer.currentScaleValue = evt.value;
+    }
+
+    webViewerRotateCw() {
+        this.rotatePages(90);
+    }
+
+    webViewerRotateCcw() {
+        this.rotatePages(-90);
+    }
+
+    webViewerSwitchScrollMode(evt) {
+        this.pdfViewer.scrollMode = evt.mode;
+    }
+
+    webViewerSwitchSpreadMode(evt) {
+        this.pdfViewer.spreadMode = evt.mode;
+    }
+
+    webViewerRotationChanging(evt) {
+        this.pdfThumbnailViewer.pagesRotation = evt.pagesRotation;
+
+        this.forceRendering();
+        // Ensure that the active page doesn't change during rotation.
+        this.pdfViewer.currentPageNumber = evt.pageNumber;
+    }
+
+    webViewerPageChanging(evt) {
+        let page = evt.pageNumber;
+
+        this.toolbar.setPageNumber(page, evt.pageLabel || null);
+        this.secondaryToolbar.setPageNumber(page);
+
+        if (this.pdfSidebar.isThumbnailViewVisible) {
+            this.pdfThumbnailViewer.scrollThumbnailIntoView(page);
+        }
+
+        // We need to update stats.
+        // if (typeof Stats !== 'undefined' && Stats.enabled) {
+        //     let pageView = this.pdfViewer.getPageView(page - 1);
+        //     if (pageView && pageView.stats) {
+        //         Stats.add(page, pageView.stats);
+        //     }
+        // }
+    }
+
+    webViewerPageNumberChanged(evt) {
+        let pdfViewer = this.pdfViewer;
+        pdfViewer.currentPageLabel = evt.value;
+
+        // Ensure that the page number input displays the correct value, even if the
+        // value entered by the user was invalid (e.g. a floating point number).
+        if (evt.value !== pdfViewer.currentPageNumber.toString() &&
+            evt.value !== pdfViewer.currentPageLabel) {
+            this.toolbar.setPageNumber(
+                pdfViewer.currentPageNumber, pdfViewer.currentPageLabel);
+        }
+    }
+
+    webViewerPageRendered(evt?: any) {
+        let pageNumber = evt.pageNumber;
+        let pageIndex = pageNumber - 1;
+        let pageView = this.pdfViewer.getPageView(pageIndex);
+
+        // If the page is still visible when it has finished rendering,
+        // ensure that the page number input loading indicator is hidden.
+        if (pageNumber === this.page) {
+            this.toolbar.updateLoadingIndicatorState(false);
+        }
+
+        // Prevent errors in the edge-case where the PDF document is removed *before*
+        // the 'pagerendered' event handler is invoked.
+        if (!pageView) {
+            return;
+        }
+
+        // Use the rendered page to set the corresponding thumbnail image.
+        if (this.pdfSidebar.isThumbnailViewVisible) {
+            let thumbnailView = this.pdfThumbnailViewer.
+                getThumbnail(pageIndex);
+            thumbnailView.setImage(pageView);
+        }
+
+        // if (typeof Stats !== 'undefined' && Stats.enabled && pageView.stats) {
+        //     Stats.add(pageNumber, pageView.stats);
+        // }
+
+        if (pageView.error) {
+            this.l10n.get('rendering_error', null,
+                'An error occurred while rendering the page.').then((msg) => {
+                    this.error(msg, pageView.error);
+                });
+        }
+
+        // if (typeof PDFJSDev !== 'undefined' &&
+        //     PDFJSDev.test('FIREFOX || MOZCENTRAL')) {
+        //     this.externalServices.reportTelemetry({
+        //         type: 'pageInfo',
+        //     });
+        //     // It is a good time to report stream and font types.
+        //     this.pdfDocument.getStats().then(function (stats) {
+        //         this.externalServices.reportTelemetry({
+        //             type: 'documentStats',
+        //             stats,
+        //         });
+        //     });
+        // }
+    }
+
+    webViewerZoomIn() {
+        this.zoomIn();
+    }
+
+    webViewerZoomOut() {
+        this.zoomOut();
+    }
+
+    webViewerFind(evt) {
+        this.findController.executeCommand('find' + evt.type, {
+            query: evt.query,
+            phraseSearch: evt.phraseSearch,
+            caseSensitive: evt.caseSensitive,
+            highlightAll: evt.highlightAll,
+            findPrevious: evt.findPrevious,
+        });
+    }
+
+    webViewerFindFromUrlHash(evt) {
+        this.findController.executeCommand('find', {
+            query: evt.query,
+            phraseSearch: evt.phraseSearch,
+            caseSensitive: false,
+            highlightAll: true,
+            findPrevious: false,
+        });
+    }
+
+
+    webViewerDocumentProperties() {
+        this.pdfDocumentProperties.open();
+    }
+
+    rotatePages(delta) {
+        if (!this.pdfDocument) {
+            return;
+        }
+        let newRotation = (this.pdfViewer.pagesRotation + 360 + delta) % 360;
+        this.pdfViewer.pagesRotation = newRotation;
+        // Note that the thumbnail viewer is updated, and rendering is triggered,
+        // in the 'rotationchanging' event handler.
+    }
+
+    zoomIn(ticks?: any) {
+        let newScale = this.pdfViewer.currentScale;
+        do {
+            newScale = (newScale * DEFAULT_SCALE_DELTA).toFixed(2);
+            newScale = Math.ceil(newScale * 10) / 10;
+            newScale = Math.min(MAX_SCALE, newScale);
+        } while (--ticks > 0 && newScale < MAX_SCALE);
+        this.pdfViewer.currentScaleValue = newScale;
+    }
+
+    zoomOut(ticks?: any) {
+        let newScale = this.pdfViewer.currentScale;
+        do {
+            newScale = (newScale / DEFAULT_SCALE_DELTA).toFixed(2);
+            newScale = Math.floor(newScale * 10) / 10;
+            newScale = Math.max(MIN_SCALE, newScale);
+        } while (--ticks > 0 && newScale > MIN_SCALE);
+        this.pdfViewer.currentScaleValue = newScale;
+    }
+
+    requestPresentationMode() {
+        if (!this.pdfPresentationMode) {
+            return;
+        }
+        this.pdfPresentationMode.request();
     }
 
     private _initializeL10n() {
@@ -981,130 +1022,141 @@ export class PdfViewerComponent {
 
 
     get viewerParams(): PDFViewerParams | any {
+        const element = this.element.shadowRoot;
+
+        const sidebar = element.querySelector('hive-pdf-sidebar');
+        const toolbar = element.querySelector('hive-pdf-toolbar');
+        const findbar = element.querySelector('hive-pdf-findbar');
+        const secondaryToolbar = element.querySelector('hive-pdf-secondary-toolbar');
+
+        const errorWrapper = element.querySelector('hive-pdf-error-wrapper');
+
+        // dialogs
+        const passwordDialog = element.querySelector('hive-pdf-password-dialog');
+        const documentPropertiesDialog = element.querySelector('hive-pdf-document-properties-dialog');
+
         return {
             eventBus: this.eventBus,
             linkService: this.pdfLinkService,
             enableWebGL: this.enableWebGL,
             appContainer: document.body,
-            mainContainer: this.element.shadowRoot.querySelector('#viewerContainer'),
-            viewerContainer: this.element.shadowRoot.querySelector('#viewer'),
+            mainContainer: element.querySelector('#viewerContainer'),
+            viewerContainer: element.querySelector('#viewer'),
             toolbar: {
-                container: this.element.shadowRoot.querySelector('#toolbarViewer'),
-                numPages: this.element.shadowRoot.querySelector('#numPages'),
-                pageNumber: this.element.shadowRoot.querySelector('#pageNumber'),
-                scaleSelectContainer: this.element.shadowRoot.querySelector('#scaleSelectContainer'),
-                scaleSelect: this.element.shadowRoot.querySelector('#scaleSelect'),
-                customScaleOption: this.element.shadowRoot.querySelector('#customScaleOption'),
-                previous: this.element.shadowRoot.querySelector('#previous'),
-                next: this.element.shadowRoot.querySelector('#next'),
-                zoomIn: this.element.shadowRoot.querySelector('#zoomIn'),
-                zoomOut: this.element.shadowRoot.querySelector('#zoomOut'),
-                viewFind: this.element.shadowRoot.querySelector('#viewFind'),
-                openFile: this.element.shadowRoot.querySelector('#openFile'),
-                print: this.element.shadowRoot.querySelector('#print'),
-                presentationModeButton: this.element.shadowRoot.querySelector('#presentationMode'),
-                download: this.element.shadowRoot.querySelector('#download'),
-                viewBookmark: this.element.shadowRoot.querySelector('#viewBookmark'),
+                container: toolbar,
+                numPages: toolbar.shadowRoot.querySelector('#numPages'),
+                pageNumber: toolbar.shadowRoot.querySelector('#pageNumber'),
+                scaleSelectContainer: toolbar.shadowRoot.querySelector('#scaleSelectContainer'),
+                scaleSelect: toolbar.shadowRoot.querySelector('#scaleSelect'),
+                customScaleOption: toolbar.shadowRoot.querySelector('#customScaleOption'),
+                previous: toolbar.shadowRoot.querySelector('#previous'),
+                next: toolbar.shadowRoot.querySelector('#next'),
+                zoomIn: toolbar.shadowRoot.querySelector('#zoomIn'),
+                zoomOut: toolbar.shadowRoot.querySelector('#zoomOut'),
+                viewFind: toolbar.shadowRoot.querySelector('#viewFind'),
+                openFile: toolbar.shadowRoot.querySelector('#openFile'),
+                print: toolbar.shadowRoot.querySelector('#print'),
+                presentationModeButton: toolbar.shadowRoot.querySelector('#presentationMode'),
+                download: toolbar.shadowRoot.querySelector('#download'),
+                viewBookmark: toolbar.shadowRoot.querySelector('#viewBookmark'),
             },
             secondaryToolbar: {
-                toolbar: this.element.shadowRoot.querySelector('#secondaryToolbar'),
-                toggleButton: this.element.shadowRoot.querySelector('#secondaryToolbarToggle'),
-                toolbarButtonContainer:
-                    this.element.shadowRoot.querySelector('#secondaryToolbarButtonContainer'),
-                presentationModeButton:
-                    this.element.shadowRoot.querySelector('#secondaryPresentationMode'),
-                openFileButton: this.element.shadowRoot.querySelector('#secondaryOpenFile'),
-                printButton: this.element.shadowRoot.querySelector('#secondaryPrint'),
-                downloadButton: this.element.shadowRoot.querySelector('#secondaryDownload'),
-                viewBookmarkButton: this.element.shadowRoot.querySelector('#secondaryViewBookmark'),
-                firstPageButton: this.element.shadowRoot.querySelector('#firstPage'),
-                lastPageButton: this.element.shadowRoot.querySelector('#lastPage'),
-                pageRotateCwButton: this.element.shadowRoot.querySelector('#pageRotateCw'),
-                pageRotateCcwButton: this.element.shadowRoot.querySelector('#pageRotateCcw'),
-                cursorSelectToolButton: this.element.shadowRoot.querySelector('#cursorSelectTool'),
-                cursorHandToolButton: this.element.shadowRoot.querySelector('#cursorHandTool'),
-                scrollVerticalButton: this.element.shadowRoot.querySelector('#scrollVertical'),
-                scrollHorizontalButton: this.element.shadowRoot.querySelector('#scrollHorizontal'),
-                scrollWrappedButton: this.element.shadowRoot.querySelector('#scrollWrapped'),
-                spreadNoneButton: this.element.shadowRoot.querySelector('#spreadNone'),
-                spreadOddButton: this.element.shadowRoot.querySelector('#spreadOdd'),
-                spreadEvenButton: this.element.shadowRoot.querySelector('#spreadEven'),
-                documentPropertiesButton: this.element.shadowRoot.querySelector('#documentProperties'),
+                toolbar: secondaryToolbar.shadowRoot.querySelector('#secondaryToolbar'),
+                toggleButton: toolbar.shadowRoot.querySelector('#secondaryToolbarToggle'),
+                toolbarButtonContainer: secondaryToolbar.shadowRoot.querySelector('#secondaryToolbarButtonContainer'),
+                presentationModeButton: secondaryToolbar.shadowRoot.querySelector('#secondaryPresentationMode'),
+                openFileButton: secondaryToolbar.shadowRoot.querySelector('#secondaryOpenFile'),
+                printButton: secondaryToolbar.shadowRoot.querySelector('#secondaryPrint'),
+                downloadButton: secondaryToolbar.shadowRoot.querySelector('#secondaryDownload'),
+                viewBookmarkButton: secondaryToolbar.shadowRoot.querySelector('#secondaryViewBookmark'),
+                firstPageButton: secondaryToolbar.shadowRoot.querySelector('#firstPage'),
+                lastPageButton: secondaryToolbar.shadowRoot.querySelector('#lastPage'),
+                pageRotateCwButton: secondaryToolbar.shadowRoot.querySelector('#pageRotateCw'),
+                pageRotateCcwButton: secondaryToolbar.shadowRoot.querySelector('#pageRotateCcw'),
+                cursorSelectToolButton: secondaryToolbar.shadowRoot.querySelector('#cursorSelectTool'),
+                cursorHandToolButton: secondaryToolbar.shadowRoot.querySelector('#cursorHandTool'),
+                scrollVerticalButton: secondaryToolbar.shadowRoot.querySelector('#scrollVertical'),
+                scrollHorizontalButton: secondaryToolbar.shadowRoot.querySelector('#scrollHorizontal'),
+                scrollWrappedButton: secondaryToolbar.shadowRoot.querySelector('#scrollWrapped'),
+                spreadNoneButton: secondaryToolbar.shadowRoot.querySelector('#spreadNone'),
+                spreadOddButton: secondaryToolbar.shadowRoot.querySelector('#spreadOdd'),
+                spreadEvenButton: secondaryToolbar.shadowRoot.querySelector('#spreadEven'),
+                documentPropertiesButton: secondaryToolbar.shadowRoot.querySelector('#documentProperties'),
             },
             fullscreen: {
-                contextFirstPage: this.element.shadowRoot.querySelector('#contextFirstPage'),
-                contextLastPage: this.element.shadowRoot.querySelector('#contextLastPage'),
-                contextPageRotateCw: this.element.shadowRoot.querySelector('#contextPageRotateCw'),
-                contextPageRotateCcw: this.element.shadowRoot.querySelector('#contextPageRotateCcw'),
+                contextFirstPage: element.querySelector('#contextFirstPage'),
+                contextLastPage: element.querySelector('#contextLastPage'),
+                contextPageRotateCw: element.querySelector('#contextPageRotateCw'),
+                contextPageRotateCcw: element.querySelector('#contextPageRotateCcw'),
             },
             sidebar: {
                 // Divs (and sidebar button)
-                outerContainer: this.element.shadowRoot.querySelector('#outerContainer'),
-                viewerContainer: this.element.shadowRoot.querySelector('#viewerContainer'),
-                toggleButton: this.element.shadowRoot.querySelector('#sidebarToggle'),
+                outerContainer: element.querySelector('#outerContainer'),
+                viewerContainer: element.querySelector('#viewerContainer'),
+                toggleButton: toolbar.shadowRoot.querySelector('#sidebarToggle'),
                 // Buttons
-                thumbnailButton: this.element.shadowRoot.querySelector('#viewThumbnail'),
-                outlineButton: this.element.shadowRoot.querySelector('#viewOutline'),
-                attachmentsButton: this.element.shadowRoot.querySelector('#viewAttachments'),
+                thumbnailButton: sidebar.shadowRoot.querySelector('#viewThumbnail'),
+                outlineButton: sidebar.shadowRoot.querySelector('#viewOutline'),
+                attachmentsButton: sidebar.shadowRoot.querySelector('#viewAttachments'),
                 // Views
-                thumbnailView: this.element.shadowRoot.querySelector('#thumbnailView'),
-                outlineView: this.element.shadowRoot.querySelector('#outlineView'),
-                attachmentsView: this.element.shadowRoot.querySelector('#attachmentsView'),
+                thumbnailView: sidebar.shadowRoot.querySelector('#thumbnailView'),
+                outlineView: sidebar.shadowRoot.querySelector('#outlineView'),
+                attachmentsView: sidebar.shadowRoot.querySelector('#attachmentsView'),
             },
             sidebarResizer: {
-                outerContainer: this.element.shadowRoot.querySelector('#outerContainer'),
-                resizer: this.element.shadowRoot.querySelector('#sidebarResizer'),
+                outerContainer: element.querySelector('#outerContainer'),
+                resizer: sidebar.shadowRoot.querySelector('#sidebarResizer'),
             },
             findBar: {
-                bar: this.element.shadowRoot.querySelector('#findbar'),
-                toggleButton: this.element.shadowRoot.querySelector('#viewFind'),
-                findField: this.element.shadowRoot.querySelector('#findInput'),
-                highlightAllCheckbox: this.element.shadowRoot.querySelector('#findHighlightAll'),
-                caseSensitiveCheckbox: this.element.shadowRoot.querySelector('#findMatchCase'),
-                findMsg: this.element.shadowRoot.querySelector('#findMsg'),
-                findResultsCount: this.element.shadowRoot.querySelector('#findResultsCount'),
-                findStatusIcon: this.element.shadowRoot.querySelector('#findStatusIcon'),
-                findPreviousButton: this.element.shadowRoot.querySelector('#findPrevious'),
-                findNextButton: this.element.shadowRoot.querySelector('#findNext'),
+                bar: findbar.shadowRoot.querySelector('#findbar'),
+                toggleButton: toolbar.shadowRoot.querySelector('#viewFind'),
+                findField: findbar.shadowRoot.querySelector('#findInput'),
+                highlightAllCheckbox: findbar.shadowRoot.querySelector('#findHighlightAll'),
+                caseSensitiveCheckbox: findbar.shadowRoot.querySelector('#findMatchCase'),
+                findMsg: findbar.shadowRoot.querySelector('#findMsg'),
+                findResultsCount: findbar.shadowRoot.querySelector('#findResultsCount'),
+                findStatusIcon: findbar.shadowRoot.querySelector('#findStatusIcon'),
+                findPreviousButton: findbar.shadowRoot.querySelector('#findPrevious'),
+                findNextButton: findbar.shadowRoot.querySelector('#findNext'),
             },
             passwordOverlay: {
                 overlayName: 'passwordOverlay',
-                container: this.element.shadowRoot.querySelector('#passwordOverlay'),
-                label: this.element.shadowRoot.querySelector('#passwordText'),
-                input: this.element.shadowRoot.querySelector('#password'),
-                submitButton: this.element.shadowRoot.querySelector('#passwordSubmit'),
-                cancelButton: this.element.shadowRoot.querySelector('#passwordCancel'),
+                container: passwordDialog.shadowRoot.querySelector('#passwordOverlay'),
+                label: passwordDialog.shadowRoot.querySelector('#passwordText'),
+                input: passwordDialog.shadowRoot.querySelector('#password'),
+                submitButton: passwordDialog.shadowRoot.querySelector('#passwordSubmit'),
+                cancelButton: passwordDialog.shadowRoot.querySelector('#passwordCancel'),
             },
             documentProperties: {
                 overlayName: 'documentPropertiesOverlay',
-                container: this.element.shadowRoot.querySelector('#documentPropertiesOverlay'),
-                closeButton: this.element.shadowRoot.querySelector('#documentPropertiesClose'),
+                container: documentPropertiesDialog.shadowRoot.querySelector('#documentPropertiesOverlay'),
+                closeButton: element.querySelector('#documentPropertiesClose'),
                 fields: {
-                    'fileName': this.element.shadowRoot.querySelector('#fileNameField'),
-                    'fileSize': this.element.shadowRoot.querySelector('#fileSizeField'),
-                    'title': this.element.shadowRoot.querySelector('#titleField'),
-                    'author': this.element.shadowRoot.querySelector('#authorField'),
-                    'subject': this.element.shadowRoot.querySelector('#subjectField'),
-                    'keywords': this.element.shadowRoot.querySelector('#keywordsField'),
-                    'creationDate': this.element.shadowRoot.querySelector('#creationDateField'),
-                    'modificationDate': this.element.shadowRoot.querySelector('#modificationDateField'),
-                    'creator': this.element.shadowRoot.querySelector('#creatorField'),
-                    'producer': this.element.shadowRoot.querySelector('#producerField'),
-                    'version': this.element.shadowRoot.querySelector('#versionField'),
-                    'pageCount': this.element.shadowRoot.querySelector('#pageCountField'),
-                    'pageSize': this.element.shadowRoot.querySelector('#pageSizeField'),
-                    'linearized': this.element.shadowRoot.querySelector('#linearizedField'),
+                    'fileName': documentPropertiesDialog.shadowRoot.querySelector('#fileNameField'),
+                    'fileSize': documentPropertiesDialog.shadowRoot.querySelector('#fileSizeField'),
+                    'title': documentPropertiesDialog.shadowRoot.querySelector('#titleField'),
+                    'author': documentPropertiesDialog.shadowRoot.querySelector('#authorField'),
+                    'subject': documentPropertiesDialog.shadowRoot.querySelector('#subjectField'),
+                    'keywords': documentPropertiesDialog.shadowRoot.querySelector('#keywordsField'),
+                    'creationDate': documentPropertiesDialog.shadowRoot.querySelector('#creationDateField'),
+                    'modificationDate': documentPropertiesDialog.shadowRoot.querySelector('#modificationDateField'),
+                    'creator': documentPropertiesDialog.shadowRoot.querySelector('#creatorField'),
+                    'producer': documentPropertiesDialog.shadowRoot.querySelector('#producerField'),
+                    'version': documentPropertiesDialog.shadowRoot.querySelector('#versionField'),
+                    'pageCount': documentPropertiesDialog.shadowRoot.querySelector('#pageCountField'),
+                    'pageSize': documentPropertiesDialog.shadowRoot.querySelector('#pageSizeField'),
+                    'linearized': documentPropertiesDialog.shadowRoot.querySelector('#linearizedField'),
                 },
             },
             errorWrapper: {
-                container: this.element.shadowRoot.querySelector('#errorWrapper'),
-                errorMessage: this.element.shadowRoot.querySelector('#errorMessage'),
-                closeButton: this.element.shadowRoot.querySelector('#errorClose'),
-                errorMoreInfo: this.element.shadowRoot.querySelector('#errorMoreInfo'),
-                moreInfoButton: this.element.shadowRoot.querySelector('#errorShowMore'),
-                lessInfoButton: this.element.shadowRoot.querySelector('#errorShowLess'),
+                container: errorWrapper.shadowRoot.querySelector('#errorWrapper'),
+                errorMessage: errorWrapper.shadowRoot.querySelector('#errorMessage'),
+                closeButton: errorWrapper.shadowRoot.querySelector('#errorClose'),
+                errorMoreInfo: errorWrapper.shadowRoot.querySelector('#errorMoreInfo'),
+                moreInfoButton: errorWrapper.shadowRoot.querySelector('#errorShowMore'),
+                lessInfoButton: errorWrapper.shadowRoot.querySelector('#errorShowLess'),
             },
-            printContainer: this.element.shadowRoot.querySelector('#printContainer'),
+            printContainer: element.querySelector('#printContainer'),
             openFileInputName: 'fileInput',
             debuggerScriptPath: './debugger.js',
         } as any;
@@ -1122,9 +1174,14 @@ export class PdfViewerComponent {
                 });
             });
         });
-        // let pageModePromise = pdfDocument.getPageMode().catch(() => {
-        //     /* Avoid breaking initial rendering; ignoring errors. */
-        // });
+        let pageModePromise = pdfDocument.getPageMode().catch(() => {
+            /* Avoid breaking initial rendering; ignoring errors. */
+        });
+
+        this.toolbar.setPagesCount(pdfDocument.numPages, false);
+        this.secondaryToolbar.setPagesCount(pdfDocument.numPages);
+
+        const store = this.store = new PDFJSViewHistory.ViewHistory(pdfDocument.fingerprint);
 
         let pdfViewer = this.pdfViewer;
         pdfViewer.setDocument(pdfDocument);
@@ -1138,7 +1195,110 @@ export class PdfViewerComponent {
         pdfThumbnailViewer.setDocument(pdfDocument);
 
         firstPagePromise.then((pdfPage) => {
-            console.log('firstPagePromise', pdfPage);
+            console.log('pdfPage', pdfPage);
+            // this.loadingBar.setWidth(this.appConfig.viewerContainer);
+            if(!this.disableHistory && !this.isViewerEmbedded) {
+                // The browsing history is only enabled when the viewer is standalone,
+                // i.e. not when it is embedded in a web page.
+                let resetHistory = !this.showPreviousViewOnLoad;
+                this.pdfHistory.initialize(pdfDocument.fingerprint, resetHistory);
+
+                if (this.pdfHistory.initialBookmark) {
+                    this.initialBookmark = this.pdfHistory.initialBookmark;
+                    this.initialRotation = this.pdfHistory.initialRotation;
+                }
+            }
+            let initialParams = {
+                bookmark: null,
+                hash: null,
+            };
+            let storePromise = store.getMultiple({
+                page: null,
+                zoom: DEFAULT_SCALE_VALUE,
+                scrollLeft: '0',
+                scrollTop: '0',
+                rotation: null,
+                sidebarView: PDFJSSidebar.SidebarView.NONE,
+                scrollMode: null,
+                spreadMode: null,
+            }).catch(() => { /* Unable to read from storage; ignoring errors. */ });
+
+            Promise.all([storePromise, pageModePromise]).then(
+                ([values = {}, pageMode]) => {
+                    // Initialize the default values, from user preferences.
+                    const zoom = this.defaultZoomValue;
+                    let hash = zoom ? `zoom=${zoom}` : null;
+
+                    let rotation = null;
+                    let sidebarView = this.sidebarViewOnLoad;
+                    let scrollMode = this.scrollModeOnLoad;
+                    let spreadMode = this.spreadModeOnLoad;
+
+                    if (values.page && this.showPreviousViewOnLoad) {
+                        hash = 'page=' + values.page + '&zoom=' + (zoom || values.zoom) +
+                            ',' + values.scrollLeft + ',' + values.scrollTop;
+
+                        rotation = parseInt(values.rotation, 10);
+                        sidebarView = sidebarView || (values.sidebarView as any | 0);
+                        scrollMode = scrollMode || (values.scrollMode | 0);
+                        spreadMode = spreadMode || (values.spreadMode as any | 0);
+                    }
+                    if (pageMode && !this.disablePageMode) {
+                        // Always let the user preference/history take precedence.
+                        sidebarView = sidebarView || this.apiPageModeToSidebarView(pageMode);
+                    }
+                    return {
+                        hash,
+                        rotation,
+                        sidebarView,
+                        scrollMode,
+                        spreadMode,
+                    };
+                }).then(({ hash, rotation, sidebarView, scrollMode, spreadMode, }) => {
+                    initialParams.bookmark = this.initialBookmark;
+                    initialParams.hash = hash;
+
+                    this.setInitialView(hash, {
+                        rotation, sidebarView, scrollMode, spreadMode,
+                    });
+
+                    // Make all navigation keys work on document load,
+                    // unless the viewer is embedded in a web page.
+                    if (!this.isViewerEmbedded) {
+                        pdfViewer.focus();
+                    }
+
+                    return Promise.race([
+                        pagesPromise,
+                        new Promise((resolve) => {
+                            setTimeout(resolve, FORCE_PAGES_LOADED_TIMEOUT);
+                        }),
+                    ]);
+                }).then(() => {
+                    // For documents with different page sizes, once all pages are resolved,
+                    // ensure that the correct location becomes visible on load.
+                    // To reduce the risk, in very large and/or slow loading documents,
+                    // that the location changes *after* the user has started interacting
+                    // with the viewer, wait for either `pagesPromise` or a timeout above.
+
+                    if (!initialParams.bookmark && !initialParams.hash) {
+                        return;
+                    }
+                    if (pdfViewer.hasEqualPageSizes) {
+                        return;
+                    }
+                    this.initialBookmark = initialParams.bookmark;
+
+                    // eslint-disable-next-line no-self-assign
+                    pdfViewer.currentScaleValue = pdfViewer.currentScaleValue;
+                    this.setInitialView(initialParams.hash);
+                }).then(function () {
+                    // At this point, rendering of the initial page(s) should always have
+                    // started (and may even have completed).
+                    // To prevent any future issues, e.g. the document being completely
+                    // blank on load, always trigger rendering here.
+                    pdfViewer.update();
+                });
         });
 
         pdfDocument.getPageLabels().then(labels => {
@@ -1227,11 +1387,35 @@ export class PdfViewerComponent {
 
                 if (info.IsAcroFormPresent) {
                     console.warn('Warning: AcroForm/XFA is not supported');
-                    // this.fallback(UNSUPPORTED_FEATURES.forms);
+                    this.fallback(UNSUPPORTED_FEATURES.forms);
                 }
             }
         );
 
+    }
+
+    /**
+     * Converts API PageMode values to the format used by`PDFSidebar`.
+     * NOTE: There's also a "FullScreen" parameter which is not possible to support,
+     * since the Fullscreen API used in browsers requires that entering
+     * fullscreen mode only occurs as a result of a user - initiated event.
+     * @param { string } mode - The API PageMode value.
+     * @returns { number } A value from { SidebarView }.
+    **/
+    apiPageModeToSidebarView(mode) {
+        switch (mode) {
+            case 'UseNone':
+                return PDFJSSidebar.SidebarView.NONE;
+            case 'UseThumbs':
+                return PDFJSSidebar.SidebarView.THUMBS;
+            case 'UseOutlines':
+                return PDFJSSidebar.SidebarView.OUTLINE;
+            case 'UseAttachments':
+                return PDFJSSidebar.SidebarView.ATTACHMENTS;
+            case 'UseOC':
+            // Not implemented, since we don't support Optional Content Groups yet.
+        }
+        return PDFJSSidebar.SidebarView.NONE; // Default value.
     }
 
     setTitleUsingUrl(url = '') {
@@ -1258,7 +1442,7 @@ export class PdfViewerComponent {
         document.title = title;
     }
 
-    fallback(featureId) {
+    fallback(featureId?: any) {
         if (this.fellback) {
             return;
         }
@@ -1270,7 +1454,7 @@ export class PdfViewerComponent {
             if (!download) {
                 return;
             }
-            // PDFViewerApplication.download();
+            this.download();
         });
     }
 
@@ -1278,10 +1462,13 @@ export class PdfViewerComponent {
         return this.externalServices.supportsIntegratedFind;
     }
 
+    get supportsDocumentColors() {
+        return this.externalServices.supportsDocumentColors;
+    }
+
     get printing() {
         return !!this.printService;
     }
-
 
     private async open(file, args?: any) {
         if (this.pdfLoadingTask) {
@@ -1318,7 +1505,8 @@ export class PdfViewerComponent {
             this.progress(loaded / total);
         };
 
-        loadingTask.onUnsupportedFeature = null; // this.fallback.bind(this);
+        // Listen for unsupported features to trigger the fallback UI.
+        loadingTask.onUnsupportedFeature = this.fallback.bind(this);
 
         return loadingTask.promise.then((pdfDocument) => {
             this.load(pdfDocument);
@@ -1357,12 +1545,6 @@ export class PdfViewerComponent {
 
         this.progressChange.emit(percent);
     }
-
-    // private _bindPageChangeEvent() {
-    //     this.viewerContainer.addEventListener('pagechange', (event: Event & PDFPageProxy) => {
-    //         this.pageChange.emit(event.pageNumber);
-    //     });
-    // }
 
     get viewerContainer() {
         return this.element.shadowRoot.querySelector('#viewerContainer');
@@ -1407,7 +1589,7 @@ export class PdfViewerComponent {
         Promise.all(moreInfoText).then((parts) => {
             console.error(message + '\n' + parts.join('\n'));
         });
-        // this.fallback();
+        this.fallback();
     }
 
     /**
@@ -1435,7 +1617,7 @@ export class PdfViewerComponent {
             this.pdfDocumentProperties.setDocument(null, null);
         }
         // this.store = null;
-        // this.isInitialViewSet = false;
+        this.isInitialViewSet = false;
         this.downloadComplete = false;
         this.url = '';
         this.baseUrl = '';

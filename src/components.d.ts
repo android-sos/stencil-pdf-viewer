@@ -32,6 +32,270 @@ import {
 declare global {
 
   namespace StencilComponents {
+    interface HivePdfDocumentPropertiesDialog {
+
+    }
+  }
+
+  interface HTMLHivePdfDocumentPropertiesDialogElement extends StencilComponents.HivePdfDocumentPropertiesDialog, HTMLStencilElement {}
+
+  var HTMLHivePdfDocumentPropertiesDialogElement: {
+    prototype: HTMLHivePdfDocumentPropertiesDialogElement;
+    new (): HTMLHivePdfDocumentPropertiesDialogElement;
+  };
+  interface HTMLElementTagNameMap {
+    'hive-pdf-document-properties-dialog': HTMLHivePdfDocumentPropertiesDialogElement;
+  }
+  interface ElementTagNameMap {
+    'hive-pdf-document-properties-dialog': HTMLHivePdfDocumentPropertiesDialogElement;
+  }
+  namespace JSX {
+    interface IntrinsicElements {
+      'hive-pdf-document-properties-dialog': JSXElements.HivePdfDocumentPropertiesDialogAttributes;
+    }
+  }
+  namespace JSXElements {
+    export interface HivePdfDocumentPropertiesDialogAttributes extends HTMLAttributes {
+
+    }
+  }
+}
+
+
+declare global {
+
+  namespace StencilComponents {
+    interface HivePdfErrorWrapper {
+
+    }
+  }
+
+  interface HTMLHivePdfErrorWrapperElement extends StencilComponents.HivePdfErrorWrapper, HTMLStencilElement {}
+
+  var HTMLHivePdfErrorWrapperElement: {
+    prototype: HTMLHivePdfErrorWrapperElement;
+    new (): HTMLHivePdfErrorWrapperElement;
+  };
+  interface HTMLElementTagNameMap {
+    'hive-pdf-error-wrapper': HTMLHivePdfErrorWrapperElement;
+  }
+  interface ElementTagNameMap {
+    'hive-pdf-error-wrapper': HTMLHivePdfErrorWrapperElement;
+  }
+  namespace JSX {
+    interface IntrinsicElements {
+      'hive-pdf-error-wrapper': JSXElements.HivePdfErrorWrapperAttributes;
+    }
+  }
+  namespace JSXElements {
+    export interface HivePdfErrorWrapperAttributes extends HTMLAttributes {
+
+    }
+  }
+}
+
+
+declare global {
+
+  namespace StencilComponents {
+    interface HivePdfFindbar {
+
+    }
+  }
+
+  interface HTMLHivePdfFindbarElement extends StencilComponents.HivePdfFindbar, HTMLStencilElement {}
+
+  var HTMLHivePdfFindbarElement: {
+    prototype: HTMLHivePdfFindbarElement;
+    new (): HTMLHivePdfFindbarElement;
+  };
+  interface HTMLElementTagNameMap {
+    'hive-pdf-findbar': HTMLHivePdfFindbarElement;
+  }
+  interface ElementTagNameMap {
+    'hive-pdf-findbar': HTMLHivePdfFindbarElement;
+  }
+  namespace JSX {
+    interface IntrinsicElements {
+      'hive-pdf-findbar': JSXElements.HivePdfFindbarAttributes;
+    }
+  }
+  namespace JSXElements {
+    export interface HivePdfFindbarAttributes extends HTMLAttributes {
+
+    }
+  }
+}
+
+
+declare global {
+
+  namespace StencilComponents {
+    interface HivePdfPasswordDialog {
+
+    }
+  }
+
+  interface HTMLHivePdfPasswordDialogElement extends StencilComponents.HivePdfPasswordDialog, HTMLStencilElement {}
+
+  var HTMLHivePdfPasswordDialogElement: {
+    prototype: HTMLHivePdfPasswordDialogElement;
+    new (): HTMLHivePdfPasswordDialogElement;
+  };
+  interface HTMLElementTagNameMap {
+    'hive-pdf-password-dialog': HTMLHivePdfPasswordDialogElement;
+  }
+  interface ElementTagNameMap {
+    'hive-pdf-password-dialog': HTMLHivePdfPasswordDialogElement;
+  }
+  namespace JSX {
+    interface IntrinsicElements {
+      'hive-pdf-password-dialog': JSXElements.HivePdfPasswordDialogAttributes;
+    }
+  }
+  namespace JSXElements {
+    export interface HivePdfPasswordDialogAttributes extends HTMLAttributes {
+
+    }
+  }
+}
+
+
+declare global {
+
+  namespace StencilComponents {
+    interface HivePdfSecondaryToolbar {
+
+    }
+  }
+
+  interface HTMLHivePdfSecondaryToolbarElement extends StencilComponents.HivePdfSecondaryToolbar, HTMLStencilElement {}
+
+  var HTMLHivePdfSecondaryToolbarElement: {
+    prototype: HTMLHivePdfSecondaryToolbarElement;
+    new (): HTMLHivePdfSecondaryToolbarElement;
+  };
+  interface HTMLElementTagNameMap {
+    'hive-pdf-secondary-toolbar': HTMLHivePdfSecondaryToolbarElement;
+  }
+  interface ElementTagNameMap {
+    'hive-pdf-secondary-toolbar': HTMLHivePdfSecondaryToolbarElement;
+  }
+  namespace JSX {
+    interface IntrinsicElements {
+      'hive-pdf-secondary-toolbar': JSXElements.HivePdfSecondaryToolbarAttributes;
+    }
+  }
+  namespace JSXElements {
+    export interface HivePdfSecondaryToolbarAttributes extends HTMLAttributes {
+
+    }
+  }
+}
+
+
+declare global {
+
+  namespace StencilComponents {
+    interface HivePdfSidebar {
+
+    }
+  }
+
+  interface HTMLHivePdfSidebarElement extends StencilComponents.HivePdfSidebar, HTMLStencilElement {}
+
+  var HTMLHivePdfSidebarElement: {
+    prototype: HTMLHivePdfSidebarElement;
+    new (): HTMLHivePdfSidebarElement;
+  };
+  interface HTMLElementTagNameMap {
+    'hive-pdf-sidebar': HTMLHivePdfSidebarElement;
+  }
+  interface ElementTagNameMap {
+    'hive-pdf-sidebar': HTMLHivePdfSidebarElement;
+  }
+  namespace JSX {
+    interface IntrinsicElements {
+      'hive-pdf-sidebar': JSXElements.HivePdfSidebarAttributes;
+    }
+  }
+  namespace JSXElements {
+    export interface HivePdfSidebarAttributes extends HTMLAttributes {
+
+    }
+  }
+}
+
+
+declare global {
+
+  namespace StencilComponents {
+    interface HivePdfToolbarBtn {
+      'title': string;
+    }
+  }
+
+  interface HTMLHivePdfToolbarBtnElement extends StencilComponents.HivePdfToolbarBtn, HTMLStencilElement {}
+
+  var HTMLHivePdfToolbarBtnElement: {
+    prototype: HTMLHivePdfToolbarBtnElement;
+    new (): HTMLHivePdfToolbarBtnElement;
+  };
+  interface HTMLElementTagNameMap {
+    'hive-pdf-toolbar-btn': HTMLHivePdfToolbarBtnElement;
+  }
+  interface ElementTagNameMap {
+    'hive-pdf-toolbar-btn': HTMLHivePdfToolbarBtnElement;
+  }
+  namespace JSX {
+    interface IntrinsicElements {
+      'hive-pdf-toolbar-btn': JSXElements.HivePdfToolbarBtnAttributes;
+    }
+  }
+  namespace JSXElements {
+    export interface HivePdfToolbarBtnAttributes extends HTMLAttributes {
+      'title'?: string;
+    }
+  }
+}
+
+
+declare global {
+
+  namespace StencilComponents {
+    interface HivePdfToolbar {
+
+    }
+  }
+
+  interface HTMLHivePdfToolbarElement extends StencilComponents.HivePdfToolbar, HTMLStencilElement {}
+
+  var HTMLHivePdfToolbarElement: {
+    prototype: HTMLHivePdfToolbarElement;
+    new (): HTMLHivePdfToolbarElement;
+  };
+  interface HTMLElementTagNameMap {
+    'hive-pdf-toolbar': HTMLHivePdfToolbarElement;
+  }
+  interface ElementTagNameMap {
+    'hive-pdf-toolbar': HTMLHivePdfToolbarElement;
+  }
+  namespace JSX {
+    interface IntrinsicElements {
+      'hive-pdf-toolbar': JSXElements.HivePdfToolbarAttributes;
+    }
+  }
+  namespace JSXElements {
+    export interface HivePdfToolbarAttributes extends HTMLAttributes {
+
+    }
+  }
+}
+
+
+declare global {
+
+  namespace StencilComponents {
     interface HivePdfViewer {
       'baseUrl': string;
       'cMapPacked': boolean;
@@ -50,6 +314,7 @@ declare global {
        * Whether to disable @font-face and fall back to canvas rendering (this is more resource-intensive).
        */
       'disableFontFace': boolean;
+      'disableHistory': boolean;
       'disablePageLabels': boolean;
       'disablePageMode': boolean;
       /**
@@ -80,6 +345,7 @@ declare global {
       'imageResourcesPath': string;
       'locale': string;
       'maxCanvasPixels': number;
+      'page': number;
       /**
        * Whether to enable debugging tools.
        */
@@ -149,6 +415,7 @@ declare global {
        * Whether to disable @font-face and fall back to canvas rendering (this is more resource-intensive).
        */
       'disableFontFace'?: boolean;
+      'disableHistory'?: boolean;
       'disablePageLabels'?: boolean;
       'disablePageMode'?: boolean;
       /**
@@ -182,6 +449,7 @@ declare global {
       'onFirstPage'?: (event: CustomEvent) => void;
       'onPageChange'?: (event: CustomEvent) => void;
       'onProgressChange'?: (event: CustomEvent) => void;
+      'page'?: number;
       /**
        * Whether to enable debugging tools.
        */

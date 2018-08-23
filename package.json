@@ -29,7 +29,8 @@
         "@types/jest": "^22.2.3",
         "@types/pdfjs-dist": "^0.1.2",
         "jest": "^22.4.3",
-        "pdfjs-dist": "^2.0.489"
+        "pdfjs-dist": "^2.0.489",
+        "webl10n": "^1.0.0"
     },
     "repository": {
         "type": "git",
