@@ -66,7 +66,7 @@ export class PdfViewerComponent {
     /**
      * Whether to enable WebGL.
      */
-    @Prop() enableWebGL = true;
+    @Prop() enableWebGL = false;
     /**
      * Controls if the text layer is enabled, and the selection mode that is used.\n 0 = Disabled.\n 1 = Enabled.\n 2 = (Experimental) Enabled, with enhanced text selection.
      */
