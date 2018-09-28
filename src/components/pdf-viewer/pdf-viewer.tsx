@@ -146,7 +146,7 @@ export class PdfViewerComponent {
 
 
     @Watch('url') urlChanged() {
-        // this.open();
+        this.webViewerOpenFileViaURL(this.url);
     }
 
     @Watch('page') pageChanged() {
@@ -159,6 +159,7 @@ export class PdfViewerComponent {
 
     @Event() pageChange: EventEmitter;
     @Event() progressChange: EventEmitter;
+    @Event() onError: EventEmitter;
 
     @Event() firstPage: EventEmitter;
 
@@ -1968,6 +1969,7 @@ export class PdfViewerComponent {
             let message = exception && exception.message;
             let loadingErrorMessage;
             console.log('error', message);
+            this.onError.emit(message);
             if (exception instanceof InvalidPDFException) {
                 // change error message also for other builds
                 loadingErrorMessage = this.l10n.get('invalid_file_error', null,

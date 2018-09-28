@@ -446,6 +446,7 @@ declare global {
       'locale'?: string;
       'maxCanvasPixels'?: number;
       'onFirstPage'?: (event: CustomEvent) => void;
+      'onOnError'?: (event: CustomEvent) => void;
       'onPageChange'?: (event: CustomEvent) => void;
       'onProgressChange'?: (event: CustomEvent) => void;
       'page'?: number;
